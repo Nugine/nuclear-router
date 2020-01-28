@@ -1,0 +1,13 @@
+[package]
+name = "nuclear-router"
+version = "0.0.1"
+authors = ["Nugine <nugine@foxmail.com>"]
+edition = "2018"
+
+license = "MIT"
+description = "A simple and fast router"
+repository = "https://github.com/Nugine/nuclear-router"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
