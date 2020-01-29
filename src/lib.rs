@@ -60,6 +60,12 @@ impl<T> Router<T> {
         }
     }
 
+    pub fn clear(&mut self) {
+        self.segments.clear();
+        self.routes.clear();
+        self.regexps.clear();
+    }
+
     pub fn find<'a>(
         &'a self,
         path: &'a str,
