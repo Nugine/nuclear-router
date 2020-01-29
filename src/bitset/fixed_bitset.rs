@@ -1,5 +1,6 @@
 #![allow(unsafe_code)]
 
+use super::table::TABLE;
 use std::{mem, slice};
 
 pub unsafe trait BitStorage: Sized {
@@ -40,7 +41,9 @@ impl<S: BitStorage> FixedBitSet<S> {
             .for_each(|x| *x = u8::max_value());
         set
     }
+}
 
+impl<S: BitStorage> FixedBitSet<S> {
     pub fn intersect_with(&mut self, other: &Self) {
         self.buf
             .as_bytes_mut()
@@ -77,7 +80,7 @@ impl<S: BitStorage> FixedBitSet<S> {
         self.buf
             .as_bytes()
             .iter()
-            .flat_map(|&x| crate::table::TABLE[x as usize])
+            .flat_map(|&x| TABLE[x as usize])
             .cloned()
     }
 }
