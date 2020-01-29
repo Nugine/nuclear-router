@@ -6,13 +6,16 @@ mod table;
 use crate::bitset::{BitStorage, FixedBitSet};
 use crate::table::TABLE;
 
-use smallvec::SmallVec;
 use std::collections::HashMap;
+
+use regex::Regex;
+use smallvec::SmallVec;
 
 #[derive(Debug, Default)]
 pub struct Router<T> {
     segments: Vec<Segment>,
     routes: Vec<Route<T>>,
+    regexps: Vec<(Regex, T)>,
 }
 
 type BitArray = [u128; 4];
@@ -47,6 +50,7 @@ impl<T> Router<T> {
         Self {
             segments: vec![],
             routes: vec![],
+            regexps: vec![],
         }
     }
 
@@ -54,9 +58,8 @@ impl<T> Router<T> {
         &'a self,
         path: &'a str,
     ) -> Option<(&'a T, impl Iterator<Item = (&'a str, &'a str)>)> {
-        let path = trim_fisrt_slash(path);
-        let parts: SmallVec<[&str; 8]> = path.split('/').collect();
         let mut captures: SmallVec<[(&'a str, &'a str); 8]> = SmallVec::new();
+        let parts: SmallVec<[&str; 8]> = trim_fisrt_slash(path).split('/').collect();
         let data: &T = self.find_with_buf(path, &parts, &mut captures)?;
         Some((data, captures.into_iter()))
     }
@@ -65,8 +68,13 @@ impl<T> Router<T> {
         self.insert_endpoint(pattern, Either::A(data))
     }
 
-    pub fn nested(&mut self, prefix: &str, f: impl FnOnce() -> Router<T>) {
-        let router = f();
+    pub fn insert_regex(&mut self, pattern: Regex, data: T) {
+        self.regexps.push((pattern, data))
+    }
+
+    pub fn nested(&mut self, prefix: &str, f: impl FnOnce(&mut Router<T>)) {
+        let mut router = Self::new();
+        f(&mut router);
         self.insert_endpoint(prefix, Either::B(router))
     }
 }
@@ -75,18 +83,21 @@ impl<T> Router<T> {
     fn insert_endpoint(&mut self, pattern: &str, endpoint: Either<T, Router<T>>) {
         assert!(self.routes.len() < 512, "can not hold more than 512 routes");
 
-        let pattern = trim_fisrt_slash(pattern);
+        let mut parts: SmallVec<[&str; 8]> = trim_fisrt_slash(pattern).split('/').collect();
 
-        let mut parts: SmallVec<[&str; 8]> = pattern.split('/').collect();
-
-        let catch_all = if *parts.last().unwrap() == "**" {
-            if let Either::B(_) = &endpoint {
-                panic!("\"**\" can not be used for router prefix: {:?}", pattern);
+        let catch_all = match &endpoint {
+            Either::A(_) => some_if(*parts.last().unwrap() == "**", || {
+                parts.pop();
+                parts.len()
+            }),
+            Either::B(_) => {
+                assert!(
+                    *parts.last().unwrap() != "**",
+                    "\"**\" can not be used for router prefix: {:?}",
+                    pattern
+                );
+                Some(parts.len())
             }
-            parts.pop();
-            Some(parts.len())
-        } else {
-            None
         };
 
         let last_len = self.segments.len();
@@ -154,53 +165,51 @@ impl<T> Router<T> {
         parts: &[&'a str],
         captures: &mut SmallVec<[(&'a str, &'a str); 8]>,
     ) -> Option<&T> {
-        let mut bitset: FixedBitSet<BitArray> = FixedBitSet::one();
-
-        for (i, &part) in parts.iter().enumerate() {
-            let segment: &Segment = match self.segments.get(i) {
-                Some(s) => s,
-                None => break,
-            };
-            let mask = segment.static_map.get(part).unwrap_or(&segment.dynamic);
-            bitset.intersect_with(mask);
+        for (regex, data) in &self.regexps {
+            if let Some(caps) = regex.captures(path) {
+                for name in regex.capture_names().flatten() {
+                    let text = caps.name(name).unwrap().as_str();
+                    captures.push((name, text))
+                }
+                return Some(data);
+            }
         }
 
         let mut ones_buf: SmallVec<[usize; 8]> = SmallVec::new();
-        for (i, u) in bitset.get_inner().iter().enumerate() {
-            if *u != 0 {
-                for (j, x) in u.as_bytes().iter().enumerate() {
-                    if *x != 0 {
-                        for k in TABLE[*x as usize] {
-                            ones_buf.push(i * 128 + j * 8 + k)
+
+        if !self.segments.is_empty() {
+            let mut bitset: FixedBitSet<BitArray> = FixedBitSet::one();
+
+            for (i, &part) in parts.iter().enumerate() {
+                let segment: &Segment = match self.segments.get(i) {
+                    Some(s) => s,
+                    None => break,
+                };
+                let mask = segment.static_map.get(part).unwrap_or(&segment.dynamic);
+                bitset.intersect_with(mask);
+            }
+
+            for (i, u) in bitset.get_inner().iter().enumerate() {
+                if *u != 0 {
+                    for (j, x) in u.as_bytes().iter().enumerate() {
+                        if *x != 0 {
+                            for k in TABLE[*x as usize] {
+                                ones_buf.push(i * 128 + j * 8 + k)
+                            }
                         }
                     }
                 }
             }
         }
 
-        let routers = ones_buf.iter().map(|&i| &self.routes[i]);
-        for route in routers {
+        for route in ones_buf.iter().map(|&i| &self.routes[i]) {
             match route.endpoint {
-                Endpoint::Data(ref t) => {
-                    for (name, i) in &route.captures {
-                        captures.push((name.as_str(), parts[*i]))
-                    }
-                    if let Some(i) = route.catch_all {
-                        let offset: usize = match parts.get(i) {
-                            Some(p) => offset(path, p) as _,
-                            None => continue,
-                        };
-                        captures.push(("**", &path[offset..]));
-                    }
-
-                    return Some(t);
-                }
                 Endpoint::Router((ref router, i)) => {
                     for (name, i) in &route.captures {
                         captures.push((name.as_str(), parts[*i]))
                     }
                     let offset: usize = match parts.get(i) {
-                        Some(p) => offset(path, p) as _,
+                        Some(p) => (offset(path, p) as usize).saturating_sub(1),
                         None => continue,
                     };
                     let ret = router.find_with_buf(&path[offset..], &parts[i..], captures);
@@ -208,6 +217,27 @@ impl<T> Router<T> {
                         return ret;
                     }
                 }
+                Endpoint::Data(_) => continue,
+            }
+        }
+
+        for route in ones_buf.iter().map(|&i| &self.routes[i]) {
+            match route.endpoint {
+                Endpoint::Data(ref t) => {
+                    for (name, i) in &route.captures {
+                        captures.push((name.as_str(), parts[*i]))
+                    }
+                    if let Some(i) = route.catch_all {
+                        let offset: usize = match parts.get(i) {
+                            Some(p) => (offset(path, p) as usize).saturating_sub(1),
+                            None => continue,
+                        };
+                        captures.push(("**", &path[offset..]));
+                    }
+
+                    return Some(t);
+                }
+                Endpoint::Router(_) => continue,
             }
         }
 
@@ -231,20 +261,30 @@ fn offset(src: &str, dst: &str) -> isize {
     p2 - p1
 }
 
+#[inline]
+fn some_if<T>(cond: bool, f: impl FnOnce() -> T) -> Option<T> {
+    if cond {
+        Some(f())
+    } else {
+        None
+    }
+}
+
 #[test]
 fn test_simple() {
     let mut router: Router<usize> = Router::new();
-    router.nested("/user/:user_id", || {
-        let mut user: Router<usize> = Router::new();
+    router.nested("/user/:user_id", |user| {
         user.insert("post/:post_id", 1);
         user.insert("profile", 2);
         user.insert("file/**", 3);
         user.insert("", 4);
-        user
     });
 
     router.insert("explore", 5);
-    router.insert("pan/**", 0);
+    router.insert("pan/**", 6);
+    router.nested("pan", |pan| {
+        pan.insert_regex(Regex::new(".*/(?P<name>.+)\\.php$").unwrap(), 7);
+    });
 
     let cases: &[(_, _, &[(&str, &str)])] = &[
         (
@@ -256,14 +296,15 @@ fn test_simple() {
         (
             "/user/asd/file/home/asd/.bashrc",
             3,
-            &[("user_id", "asd"), ("**", "home/asd/.bashrc")],
+            &[("user_id", "asd"), ("**", "/home/asd/.bashrc")],
         ),
         ("/user/asd/", 4, &[("user_id", "asd")]),
         ("/explore", 5, &[]),
-        ("pan/home/asd", 0, &[("**", "home/asd")]),
+        ("/pan/home/asd", 6, &[("**", "/home/asd")]),
+        ("/pan/phpinfo.php", 7, &[("name", "phpinfo")]),
     ];
 
-    for (url, data, captures) in cases {
+    for (url, data, captures) in cases.iter() {
         let ret = router.find(url).unwrap();
         assert_eq!(ret.0, data);
         let v: Vec<(&str, &str)> = ret.1.collect();
