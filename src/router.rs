@@ -9,6 +9,7 @@ use smallvec::SmallVec;
 
 #[derive(Debug, Default)]
 pub struct Router<T> {
+    min_segments: Option<usize>,
     segments: Vec<Segment>,
     routes: Vec<Route<T>>,
     regexps: Vec<(Regex, T)>,
@@ -37,8 +38,9 @@ struct Segment {
 
 #[derive(Debug)]
 struct Route<T> {
-    captures: Vec<(String, usize)>,
+    min_segments: usize,
     catch_all: Option<usize>,
+    captures: Vec<(String, usize)>,
     endpoint: Endpoint<T>,
 }
 
@@ -60,6 +62,7 @@ impl<T> Router<T> {
             segments: vec![],
             routes: vec![],
             regexps: vec![],
+            min_segments: None,
         }
     }
 
@@ -73,8 +76,12 @@ impl<T> Router<T> {
         &'a self,
         path: &'a str,
     ) -> Option<(&'a T, impl Iterator<Item = (&'a str, &'a str)>)> {
-        let mut captures: SmallVec<[(&'a str, &'a str); 8]> = SmallVec::new();
+        let min_segments = self.min_segments?;
         let parts: SmallVec<[&str; 8]> = trim_fisrt_slash(path).split('/').collect();
+        if parts.len() < min_segments {
+            return None;
+        }
+        let mut captures: SmallVec<[(&'a str, &'a str); 8]> = SmallVec::new();
         let data: &T = self.find_with_buf(path, &parts, &mut captures)?;
         Some((data, captures.into_iter()))
     }
@@ -159,7 +166,7 @@ impl<T> Router<T> {
             Endpoint::Data(_) => route.catch_all.map(|j| catch_from == j).unwrap_or(true),
             Endpoint::Router(ref router) => parts
                 .get(catch_from)
-                .map(|p| (offset(pattern, p) as usize).saturating_sub(1))
+                .map(|p| (calc_offset(pattern, p) as usize).saturating_sub(1))
                 .map(|offset| {
                     router.check_collision(
                         &pattern[offset..],
@@ -219,6 +226,12 @@ impl<T> Router<T> {
             });
         }
 
+        let min_segments = parts.len();
+        self.min_segments = match self.min_segments {
+            Some(m) => Some(m.min(min_segments)),
+            None => Some(min_segments),
+        };
+
         if catch {
             parts.pop();
         }
@@ -255,6 +268,7 @@ impl<T> Router<T> {
         }
 
         self.routes.push(Route {
+            min_segments,
             captures,
             catch_all,
             endpoint,
@@ -263,10 +277,9 @@ impl<T> Router<T> {
         Ok(())
     }
 
-    fn find_with_buf<'a>(
+    fn find_regex<'a>(
         &'a self,
         path: &'a str,
-        parts: &[&'a str],
         captures: &mut SmallVec<[(&'a str, &'a str); 8]>,
     ) -> Option<&T> {
         for (regex, data) in &self.regexps {
@@ -278,32 +291,52 @@ impl<T> Router<T> {
                 return Some(data);
             }
         }
+        None
+    }
 
-        let mut ones_buf: SmallVec<[usize; 8]> = SmallVec::new();
+    fn find_with_buf<'a>(
+        &'a self,
+        path: &'a str,
+        parts: &[&'a str],
+        captures: &mut SmallVec<[(&'a str, &'a str); 8]>,
+    ) -> Option<&T> {
+        let ret = self.find_regex(path, captures);
+        if ret.is_some() {
+            return ret;
+        }
 
-        if !self.segments.is_empty() {
-            let mut bitset: FixedBitSet<BitArray> = FixedBitSet::one();
+        if self.segments.is_empty() {
+            return None;
+        }
 
-            for (i, &part) in parts.iter().enumerate() {
-                match self.segments.get(i) {
-                    Some(s) => {
-                        let mask = s.static_map.get(part).unwrap_or(&s.dynamic);
-                        bitset.intersect_with(mask);
-                    }
-                    None => {
-                        let mask = &self.segments.last().unwrap().catch_all;
-                        bitset.intersect_with(mask);
-                        break;
-                    }
-                };
-            }
+        let mut router_routes: SmallVec<[&'a Route<T>; 8]> = SmallVec::new();
+        let mut data_routes: SmallVec<[&'a Route<T>; 8]> = SmallVec::new();
 
-            for (i, u) in bitset.get_inner().iter().enumerate() {
-                if *u != 0 {
-                    for (j, x) in u.as_bytes().iter().enumerate() {
-                        if *x != 0 {
-                            for k in TABLE[*x as usize] {
-                                ones_buf.push(i * 128 + j * 8 + k)
+        let mut bitset: FixedBitSet<BitArray> = FixedBitSet::one();
+
+        for (i, &part) in parts.iter().enumerate() {
+            match self.segments.get(i) {
+                Some(s) => {
+                    let mask = s.static_map.get(part).unwrap_or(&s.dynamic);
+                    bitset.intersect_with(mask);
+                }
+                None => {
+                    let mask = &self.segments.last().unwrap().catch_all;
+                    bitset.intersect_with(mask);
+                    break;
+                }
+            };
+        }
+
+        for (i, u) in bitset.get_inner().iter().enumerate() {
+            if *u != 0 {
+                for (j, x) in u.as_bytes().iter().enumerate() {
+                    if *x != 0 {
+                        for k in TABLE[*x as usize] {
+                            let route = &self.routes[i * 128 + j * 8 + k];
+                            match route.endpoint {
+                                Endpoint::Data(_) => data_routes.push(route),
+                                Endpoint::Router(_) => router_routes.push(route),
                             }
                         }
                     }
@@ -311,43 +344,63 @@ impl<T> Router<T> {
             }
         }
 
-        for route in ones_buf.iter().map(|&i| &self.routes[i]) {
+        let offset = |catch_from: usize| {
+            parts
+                .get(catch_from)
+                .map(|p| (calc_offset(path, p) as usize).saturating_sub(1))
+        };
+
+        for &route in &router_routes {
             match route.endpoint {
                 Endpoint::Router(ref router) => {
-                    for (name, i) in &route.captures {
-                        captures.push((name.as_str(), parts[*i]))
+                    if route.min_segments > parts.len() {
+                        continue;
+                    }
+                    for &(ref name, i) in &route.captures {
+                        captures.push((name.as_str(), parts[i]))
                     }
                     let catch_from = route.catch_all.unwrap();
-                    let offset: usize = match parts.get(catch_from) {
-                        Some(p) => (offset(path, p) as usize).saturating_sub(1),
+                    let offset: usize = match offset(catch_from) {
+                        Some(o) => o,
                         None => continue,
                     };
-                    let ret = router.find_with_buf(&path[offset..], &parts[catch_from..], captures);
+                    let sub_parts = &parts[catch_from..];
+                    match router.min_segments {
+                        None => continue,
+                        Some(m) => {
+                            if m > sub_parts.len() {
+                                continue;
+                            }
+                        }
+                    }
+                    let ret = router.find_with_buf(&path[offset..], sub_parts, captures);
                     if ret.is_some() {
                         return ret;
                     }
                 }
-                Endpoint::Data(_) => continue,
+                _ => unreachable!(),
             }
         }
 
-        for route in ones_buf.iter().map(|&i| &self.routes[i]) {
+        for &route in &data_routes {
             match route.endpoint {
                 Endpoint::Data(ref t) => {
-                    for (name, i) in &route.captures {
-                        captures.push((name.as_str(), parts[*i]))
+                    if route.min_segments > parts.len() {
+                        continue;
                     }
-                    if let Some(i) = route.catch_all {
-                        let offset: usize = match parts.get(i) {
-                            Some(p) => (offset(path, p) as usize).saturating_sub(1),
+                    for &(ref name, i) in &route.captures {
+                        captures.push((name.as_str(), parts[i]))
+                    }
+                    if let Some(catch_from) = route.catch_all {
+                        let offset: usize = match offset(catch_from) {
+                            Some(o) => o,
                             None => continue,
                         };
                         captures.push(("**", &path[offset..]));
                     }
-
                     return Some(t);
                 }
-                Endpoint::Router(_) => continue,
+                _ => unreachable!(),
             }
         }
 
@@ -365,7 +418,7 @@ fn trim_fisrt_slash(s: &str) -> &str {
 }
 
 #[inline]
-fn offset(src: &str, dst: &str) -> isize {
+fn calc_offset(src: &str, dst: &str) -> isize {
     let p2 = dst.as_ptr() as isize;
     let p1 = src.as_ptr() as isize;
     p2 - p1
@@ -450,4 +503,15 @@ fn test_single() {
 
     assert_eq!(*router.find("/hello/world").unwrap().0, 1);
     assert!(router.find("/hello/world/asd").is_none());
+    assert!(router.find("/hello").is_none());
+}
+
+#[test]
+fn test_prefix() {
+    let mut router: Router<usize> = Router::new();
+    router.insert("/hello/world/:name", 1);
+    router.insert("/hello/earth/", 2);
+    router.insert("/asd", 3);
+
+    assert!(router.find("/hello").is_none());
 }
