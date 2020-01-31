@@ -1,18 +1,29 @@
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
 use nuclear_router::Router;
 
 fn router_find(c: &mut Criterion) {
     let mut group = c.benchmark_group("router-find");
 
-    group.bench_function("single", |b| {
-        let mut router: Router<()> = Router::new();
-        router.insert("/hello/:name", ());
-        b.iter(|| {
-            let ret = router.find("/hello/world");
-            assert!(ret.is_some())
-        })
+    group.bench_function("single-route", |b| {
+        let mut router: Router<usize> = Router::new();
+        router.insert("/hello/:name", 1);
+        b.iter_with_large_drop(|| router.find("/hello/world"))
     });
 }
 
-criterion_group!(benches, router_find);
+fn router_insert(c: &mut Criterion) {
+    let mut group = c.benchmark_group("router-insert");
+
+    group.bench_function("single-route", |b| {
+        b.iter_batched_ref(
+            Router::new,
+            |router: &mut Router<usize>| {
+                router.insert("/hello/:name", 1);
+            },
+            BatchSize::SmallInput,
+        )
+    });
+}
+
+criterion_group!(benches, router_find, router_insert);
 criterion_main!(benches);
