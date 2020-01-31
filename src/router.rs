@@ -77,7 +77,7 @@ impl<T> Router<T> {
         path: &'a str,
     ) -> Option<(&'a T, impl Iterator<Item = (&'a str, &'a str)>)> {
         let min_segments = self.min_segments?;
-        let parts: SmallVec<[&str; 8]> = trim_fisrt_slash(path).split('/').collect();
+        let parts: SmallVec<[&str; 8]> = trim_first_slash(path).split('/').collect();
         if parts.len() < min_segments {
             return None;
         }
@@ -187,7 +187,7 @@ impl<T> Router<T> {
             return Err("can not hold more than 512 routes");
         }
 
-        let mut parts: SmallVec<[&str; 8]> = trim_fisrt_slash(pattern).split('/').collect();
+        let mut parts: SmallVec<[&str; 8]> = trim_first_slash(pattern).split('/').collect();
 
         let nested = match &endpoint {
             Endpoint::Data(_) => false,
@@ -409,7 +409,7 @@ impl<T> Router<T> {
 }
 
 #[inline]
-fn trim_fisrt_slash(s: &str) -> &str {
+fn trim_first_slash(s: &str) -> &str {
     if s.starts_with('/') {
         &s[1..]
     } else {
