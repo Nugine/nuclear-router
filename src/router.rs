@@ -21,12 +21,6 @@ pub struct RouterError {
     msg: &'static str,
 }
 
-#[derive(Debug)]
-pub enum Endpoint<T> {
-    Data(T),
-    Router(Router<T>),
-}
-
 type BitArray = [u128; 4];
 
 #[derive(Debug)]
@@ -42,6 +36,12 @@ struct Route<T> {
     catch_all: Option<usize>,
     captures: Vec<(String, usize)>,
     endpoint: Endpoint<T>,
+}
+
+#[derive(Debug)]
+enum Endpoint<T> {
+    Data(T),
+    Router(Router<T>),
 }
 
 impl<T> From<T> for Endpoint<T> {
@@ -86,19 +86,15 @@ impl<T> Router<T> {
         Some((data, captures.into_iter()))
     }
 
-    pub fn insert(&mut self, pattern: &str, endpoint: impl Into<Endpoint<T>>) -> &mut Self {
-        if let Err(e) = self.insert_endpoint(pattern, endpoint.into()) {
+    pub fn insert(&mut self, pattern: &str, data: T) -> &mut Self {
+        if let Err(e) = self.insert_endpoint(pattern, data.into()) {
             panic!("{}: pattern = {:?}", e, pattern);
         }
         self
     }
 
-    pub fn try_insert(
-        &mut self,
-        pattern: &str,
-        endpoint: impl Into<Endpoint<T>>,
-    ) -> Result<&mut Self, RouterError> {
-        match self.insert_endpoint(pattern, endpoint.into()) {
+    pub fn try_insert(&mut self, pattern: &str, data: T) -> Result<&mut Self, RouterError> {
+        match self.insert_endpoint(pattern, data.into()) {
             Ok(()) => Ok(self),
             Err(msg) => Err(RouterError { msg }),
         }
@@ -112,7 +108,7 @@ impl<T> Router<T> {
     pub fn nest(&mut self, prefix: &str, f: impl FnOnce(&mut Router<T>)) -> &mut Self {
         let mut router = Self::new();
         f(&mut router);
-        if let Err(e) = self.insert_endpoint(prefix, Endpoint::Router(router)) {
+        if let Err(e) = self.insert_endpoint(prefix, router.into()) {
             panic!("{}: pattern = {:?}", e, prefix);
         }
         self
@@ -125,9 +121,19 @@ impl<T> Router<T> {
     ) -> Result<&mut Self, RouterError> {
         let mut router = Self::new();
         f(&mut router);
-        match self.insert_endpoint(prefix, Endpoint::Router(router)) {
+        match self.insert_endpoint(prefix, router.into()) {
             Ok(()) => Ok(self),
             Err(msg) => Err(RouterError { msg }),
+        }
+    }
+}
+
+impl<T> Endpoint<T> {
+    #[inline]
+    fn is_router(&self) -> bool {
+        match self {
+            Self::Data(_) => false,
+            Self::Router(_) => true,
         }
     }
 }
@@ -189,11 +195,7 @@ impl<T> Router<T> {
 
         let mut parts: SmallVec<[&str; 8]> = trim_first_slash(pattern).split('/').collect();
 
-        let nested = match &endpoint {
-            Endpoint::Data(_) => false,
-            Endpoint::Router(_) => true,
-        };
-
+        let nested = endpoint.is_router();
         let catch = *parts.last().unwrap() == "**";
 
         if nested && catch {
@@ -202,35 +204,34 @@ impl<T> Router<T> {
 
         let catch_all = if nested {
             Some(parts.len())
+        } else if catch {
+            Some(parts.len() - 1)
         } else {
-            some_if(catch, || parts.len() - 1)
+            None
         };
 
         if self.check_collision(pattern, &parts, catch_all) {
             return Err("pattern collision occurred");
         }
 
-        let last_len = self.segments.len();
-
-        for _ in self.segments.len()..parts.len() {
-            let catch_all = if last_len > 0 {
-                self.segments[last_len - 1].catch_all.clone()
-            } else {
-                FixedBitSet::zero()
-            };
-
-            self.segments.push(Segment {
-                static_map: HashMap::new(),
-                dynamic: catch_all.clone(),
-                catch_all,
-            });
-        }
-
-        let min_segments = parts.len();
+        let min_segments = parts.len() + (nested as usize);
         self.min_segments = match self.min_segments {
             Some(m) => Some(m.min(min_segments)),
             None => Some(min_segments),
         };
+
+        if self.segments.len() < min_segments {
+            let base = match self.segments.last() {
+                Some(s) => s.catch_all.clone(),
+                None => FixedBitSet::zero(),
+            };
+
+            self.segments.resize_with(min_segments, || Segment {
+                static_map: HashMap::new(),
+                dynamic: base.clone(),
+                catch_all: base.clone(),
+            })
+        }
 
         if catch {
             parts.pop();
@@ -245,9 +246,6 @@ impl<T> Router<T> {
             }
             if part.starts_with(':') {
                 let name: &str = &part[1..];
-                if name == "**" {
-                    return Err("\"**\" can not be used for capture name");
-                }
                 captures.push((name.to_owned(), i));
                 self.segments[i].dynamic.set(id, true);
             } else {
@@ -260,8 +258,7 @@ impl<T> Router<T> {
         }
 
         if let Some(pos) = catch_all {
-            for i in pos..self.segments.len() {
-                let s = &mut self.segments[i];
+            for s in self.segments[pos..].iter_mut() {
                 s.dynamic.set(id, true);
                 s.catch_all.set(id, true);
             }
@@ -305,10 +302,6 @@ impl<T> Router<T> {
             return ret;
         }
 
-        if self.segments.is_empty() {
-            return None;
-        }
-
         let mut router_routes: SmallVec<[&'a Route<T>; 8]> = SmallVec::new();
         let mut data_routes: SmallVec<[&'a Route<T>; 8]> = SmallVec::new();
 
@@ -333,7 +326,8 @@ impl<T> Router<T> {
                 for (j, x) in u.as_bytes().iter().enumerate() {
                     if *x != 0 {
                         for k in TABLE[*x as usize] {
-                            let route = &self.routes[i * 128 + j * 8 + k];
+                            let id: usize = i * 128 + j * 8 + k;
+                            let route = &self.routes[id];
                             match route.endpoint {
                                 Endpoint::Data(_) => data_routes.push(route),
                                 Endpoint::Router(_) => router_routes.push(route),
@@ -422,13 +416,4 @@ fn calc_offset(src: &str, dst: &str) -> isize {
     let p2 = dst.as_ptr() as isize;
     let p1 = src.as_ptr() as isize;
     p2 - p1
-}
-
-#[inline]
-fn some_if<T>(cond: bool, f: impl FnOnce() -> T) -> Option<T> {
-    if cond {
-        Some(f())
-    } else {
-        None
-    }
 }
