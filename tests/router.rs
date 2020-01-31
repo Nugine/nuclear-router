@@ -83,3 +83,16 @@ fn router_prefix() {
 
     assert!(router.find("/hello").is_none());
 }
+
+#[test]
+fn router_nested() {
+    let mut router: Router<usize> = Router::new();
+
+    router.nest("v1", |v1| {
+        v1.nest("u/:uid", |u| {
+            u.insert("p/:pid", 1);
+        });
+    });
+
+    assert_eq!(*router.find("/v1/u/asd/p/qwe").unwrap().0, 1);
+}
