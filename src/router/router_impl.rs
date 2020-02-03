@@ -1,11 +1,12 @@
-#![forbid(unsafe_code)]
+#![allow(unsafe_code)]
 
 use crate::bitset::{BitStorage, FixedBitSet, TABLE};
 
 use std::collections::HashMap;
+use std::ptr::NonNull;
 
-use regex::Regex;
 use smallvec::SmallVec;
+use regex::Regex;
 
 #[derive(Debug, Default)]
 pub struct Router<T> {
@@ -22,6 +23,8 @@ pub struct RouterError {
 }
 
 type BitArray = [u128; 4];
+
+type SmallKvBuffer<'a> = SmallVec<[(&'a str, &'a str); 8]>;
 
 #[derive(Debug)]
 struct Segment {
@@ -44,18 +47,6 @@ enum Endpoint<T> {
     Router(Router<T>),
 }
 
-impl<T> From<T> for Endpoint<T> {
-    fn from(x: T) -> Self {
-        Self::Data(x)
-    }
-}
-
-impl<T> From<Router<T>> for Endpoint<T> {
-    fn from(x: Router<T>) -> Self {
-        Self::Router(x)
-    }
-}
-
 impl<T> Router<T> {
     pub fn new() -> Self {
         Self {
@@ -76,13 +67,19 @@ impl<T> Router<T> {
         &'a self,
         path: &'a str,
     ) -> Option<(&'a T, impl Iterator<Item = (&'a str, &'a str)>)> {
-        let min_segments = self.min_segments?;
-        let parts: SmallVec<[&str; 8]> = trim_first_slash(path).split('/').collect();
-        if parts.len() < min_segments {
-            return None;
-        }
-        let mut captures: SmallVec<[(&'a str, &'a str); 8]> = SmallVec::new();
-        let data: &T = self.find_with_buf(path, &parts, &mut captures)?;
+        let mut captures: SmallKvBuffer<'a> = SmallVec::new();
+        let ptr = self.find_ptr(path, &mut captures)?;
+        let data = unsafe { &*ptr.as_ptr() };
+        Some((data, captures.into_iter()))
+    }
+
+    pub fn find_mut<'a>(
+        &'a mut self,
+        path: &'a str,
+    ) -> Option<(&'a T, impl Iterator<Item = (&'a str, &'a str)>)> {
+        let mut captures: SmallKvBuffer<'a> = SmallVec::new();
+        let ptr = self.find_ptr(path, &mut captures)?;
+        let data = unsafe { &mut *ptr.as_ptr() };
         Some((data, captures.into_iter()))
     }
 
@@ -128,6 +125,19 @@ impl<T> Router<T> {
     }
 }
 
+
+impl<T> From<T> for Endpoint<T> {
+    fn from(x: T) -> Self {
+        Self::Data(x)
+    }
+}
+
+impl<T> From<Router<T>> for Endpoint<T> {
+    fn from(x: Router<T>) -> Self {
+        Self::Router(x)
+    }
+}
+
 impl<T> Endpoint<T> {
     #[inline]
     fn is_router(&self) -> bool {
@@ -139,51 +149,6 @@ impl<T> Endpoint<T> {
 }
 
 impl<T> Router<T> {
-    fn check_collision(&self, pattern: &str, parts: &[&str], catch_all: Option<usize>) -> bool {
-        if self.routes.is_empty() {
-            return false;
-        }
-
-        let mut bitset: FixedBitSet<BitArray> = FixedBitSet::one();
-
-        for (i, &part) in parts.iter().enumerate() {
-            let get_mask = || -> Option<&_> {
-                let s = self.segments.get(i)?;
-                if part.starts_with(':') {
-                    Some(&s.dynamic)
-                } else {
-                    s.static_map.get(part)
-                }
-            };
-            match get_mask() {
-                Some(mask) => bitset.intersect_with(mask),
-                None => return false,
-            }
-        }
-
-        let catch_from = match catch_all {
-            None => return !bitset.is_zero(),
-            Some(i) => i,
-        };
-
-        let mut iter = bitset.iter_ones().map(|i| &self.routes[i]);
-
-        iter.any(|route: &Route<T>| match route.endpoint {
-            Endpoint::Data(_) => route.catch_all.map(|j| catch_from == j).unwrap_or(true),
-            Endpoint::Router(ref router) => parts
-                .get(catch_from)
-                .map(|p| (calc_offset(pattern, p) as usize).saturating_sub(1))
-                .map(|offset| {
-                    router.check_collision(
-                        &pattern[offset..],
-                        &parts[route.catch_all.unwrap()..],
-                        catch_all,
-                    )
-                })
-                .unwrap_or(false),
-        })
-    }
-
     fn insert_endpoint(
         &mut self,
         pattern: &str,
@@ -274,29 +239,87 @@ impl<T> Router<T> {
         Ok(())
     }
 
+    fn check_collision(&self, pattern: &str, parts: &[&str], catch_all: Option<usize>) -> bool {
+        if self.routes.is_empty() {
+            return false;
+        }
+
+        let mut bitset: FixedBitSet<BitArray> = FixedBitSet::one();
+
+        for (i, &part) in parts.iter().enumerate() {
+            let get_mask = || -> Option<&_> {
+                let s = self.segments.get(i)?;
+                if part.starts_with(':') {
+                    Some(&s.dynamic)
+                } else {
+                    s.static_map.get(part)
+                }
+            };
+            match get_mask() {
+                Some(mask) => bitset.intersect_with(mask),
+                None => return false,
+            }
+        }
+
+        let catch_from = match catch_all {
+            None => return !bitset.is_zero(),
+            Some(i) => i,
+        };
+
+        let mut iter = bitset.iter_ones().map(|i| &self.routes[i]);
+
+        iter.any(|route: &Route<T>| match route.endpoint {
+            Endpoint::Data(_) => route.catch_all.map(|j| catch_from == j).unwrap_or(true),
+            Endpoint::Router(ref router) => parts
+                .get(catch_from)
+                .map(|p| (calc_offset(pattern, p) as usize).saturating_sub(1))
+                .map(|offset| {
+                    router.check_collision(
+                        &pattern[offset..],
+                        &parts[route.catch_all.unwrap()..],
+                        catch_all,
+                    )
+                })
+                .unwrap_or(false),
+        })
+    }
+
+    pub fn find_ptr<'a>(
+        &'a self,
+        path: &'a str,
+        captures: &mut SmallVec<[(&'a str, &'a str); 8]>,
+    ) -> Option<NonNull<T>> {
+        let min_segments = self.min_segments?;
+        let parts: SmallVec<[&str; 8]> = trim_first_slash(path).split('/').collect();
+        if parts.len() < min_segments {
+            return None;
+        }
+        self.find_with_parts(path, &parts, captures)
+    }
+
     fn find_regex<'a>(
         &'a self,
         path: &'a str,
         captures: &mut SmallVec<[(&'a str, &'a str); 8]>,
-    ) -> Option<&T> {
+    ) -> Option<NonNull<T>> {
         for (regex, data) in &self.regexps {
             if let Some(caps) = regex.captures(path) {
                 for name in regex.capture_names().flatten() {
                     let text = caps.name(name).unwrap().as_str();
                     captures.push((name, text))
                 }
-                return Some(data);
+                return Some(NonNull::from(data));
             }
         }
         None
     }
 
-    fn find_with_buf<'a>(
+    fn find_with_parts<'a>(
         &'a self,
         path: &'a str,
         parts: &[&'a str],
         captures: &mut SmallVec<[(&'a str, &'a str); 8]>,
-    ) -> Option<&T> {
+    ) -> Option<NonNull<T>> {
         let ret = self.find_regex(path, captures);
         if ret.is_some() {
             return ret;
@@ -367,7 +390,7 @@ impl<T> Router<T> {
                             }
                         }
                     }
-                    let ret = router.find_with_buf(&path[offset..], sub_parts, captures);
+                    let ret = router.find_with_parts(&path[offset..], sub_parts, captures);
                     if ret.is_some() {
                         return ret;
                     }
@@ -392,7 +415,7 @@ impl<T> Router<T> {
                         };
                         captures.push(("**", &path[offset..]));
                     }
-                    return Some(t);
+                    return Some(NonNull::from(t));
                 }
                 _ => unreachable!(),
             }
