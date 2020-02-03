@@ -19,15 +19,27 @@ impl<T> HttpRouter<T> {
         }
     }
 
-    pub fn find<'a>(&'a self, method: &Method, path: &'a str) -> Option<(&'a T, Captures<'a>)> {
+    pub fn find<'s, 'p, 't>(
+        &'s self,
+        method: &Method,
+        path: &'p str,
+    ) -> Option<(&'t T, Captures<'p>)>
+    where
+        's: 'p,
+        's: 't,
+    {
         self.method_map.get(method)?.find(path)
     }
 
-    pub fn find_mut<'a>(
-        &'a mut self,
+    pub fn find_mut<'s, 'p, 't>(
+        &'s mut self,
         method: &Method,
-        path: &'a str,
-    ) -> Option<(&'a mut T, Captures<'a>)> {
+        path: &'p str,
+    ) -> Option<(&'t mut T, Captures<'p>)>
+    where
+        's: 'p,
+        's: 't,
+    {
         self.method_map.get_mut(method)?.find_mut(path)
     }
 

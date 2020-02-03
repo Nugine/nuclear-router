@@ -64,14 +64,22 @@ impl<T> Router<T> {
         self.regexps.clear();
     }
 
-    pub fn find<'a>(&'a self, path: &'a str) -> Option<(&'a T, Captures<'a>)> {
+    pub fn find<'s, 'p, 't>(&'s self, path: &'p str) -> Option<(&'t T, Captures<'p>)>
+    where
+        's: 'p,
+        's: 't,
+    {
         let mut captures = Captures::new();
         let ptr = self.find_ptr(path, &mut captures.buf)?;
         let data = unsafe { &*ptr.as_ptr() };
         Some((data, captures))
     }
 
-    pub fn find_mut<'a>(&'a mut self, path: &'a str) -> Option<(&'a mut T, Captures<'a>)> {
+    pub fn find_mut<'s, 'p, 't>(&'s mut self, path: &'p str) -> Option<(&'t mut T, Captures<'p>)>
+    where
+        's: 'p,
+        's: 't,
+    {
         let mut captures = Captures::new();
         let ptr = self.find_ptr(path, &mut captures.buf)?;
         let data = unsafe { &mut *ptr.as_ptr() };
