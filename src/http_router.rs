@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-use crate::router::{Router, RouterError};
+use crate::router::{Captures, Router, RouterError};
 
 use std::collections::HashMap;
 
@@ -19,12 +19,16 @@ impl<T> HttpRouter<T> {
         }
     }
 
-    pub fn find<'a>(
-        &'a self,
+    pub fn find<'a>(&'a self, method: &Method, path: &'a str) -> Option<(&'a T, Captures<'a>)> {
+        self.method_map.get(method)?.find(path)
+    }
+
+    pub fn find_mut<'a>(
+        &'a mut self,
         method: &Method,
         path: &'a str,
-    ) -> Option<(&'a T, impl Iterator<Item = (&'a str, &'a str)>)> {
-        self.method_map.get(method)?.find(path)
+    ) -> Option<(&'a mut T, Captures<'a>)> {
+        self.method_map.get_mut(method)?.find_mut(path)
     }
 
     pub fn insert(&mut self, method: Method, pattern: &str, data: T) -> &mut Self {

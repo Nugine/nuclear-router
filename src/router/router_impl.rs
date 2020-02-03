@@ -1,12 +1,13 @@
 #![allow(unsafe_code)]
 
+use super::captures::Captures;
 use crate::bitset::{BitStorage, FixedBitSet, TABLE};
 
 use std::collections::HashMap;
 use std::ptr::NonNull;
 
-use smallvec::SmallVec;
 use regex::Regex;
+use smallvec::SmallVec;
 
 #[derive(Debug, Default)]
 pub struct Router<T> {
@@ -63,24 +64,18 @@ impl<T> Router<T> {
         self.regexps.clear();
     }
 
-    pub fn find<'a>(
-        &'a self,
-        path: &'a str,
-    ) -> Option<(&'a T, impl Iterator<Item = (&'a str, &'a str)>)> {
-        let mut captures: SmallKvBuffer<'a> = SmallVec::new();
-        let ptr = self.find_ptr(path, &mut captures)?;
+    pub fn find<'a>(&'a self, path: &'a str) -> Option<(&'a T, Captures<'a>)> {
+        let mut captures = Captures::new();
+        let ptr = self.find_ptr(path, &mut captures.buf)?;
         let data = unsafe { &*ptr.as_ptr() };
-        Some((data, captures.into_iter()))
+        Some((data, captures))
     }
 
-    pub fn find_mut<'a>(
-        &'a mut self,
-        path: &'a str,
-    ) -> Option<(&'a T, impl Iterator<Item = (&'a str, &'a str)>)> {
-        let mut captures: SmallKvBuffer<'a> = SmallVec::new();
-        let ptr = self.find_ptr(path, &mut captures)?;
+    pub fn find_mut<'a>(&'a mut self, path: &'a str) -> Option<(&'a mut T, Captures<'a>)> {
+        let mut captures = Captures::new();
+        let ptr = self.find_ptr(path, &mut captures.buf)?;
         let data = unsafe { &mut *ptr.as_ptr() };
-        Some((data, captures.into_iter()))
+        Some((data, captures))
     }
 
     pub fn insert(&mut self, pattern: &str, data: T) -> &mut Self {
@@ -124,7 +119,6 @@ impl<T> Router<T> {
         }
     }
 }
-
 
 impl<T> From<T> for Endpoint<T> {
     fn from(x: T) -> Self {
@@ -287,7 +281,7 @@ impl<T> Router<T> {
     pub fn find_ptr<'a>(
         &'a self,
         path: &'a str,
-        captures: &mut SmallVec<[(&'a str, &'a str); 8]>,
+        captures: &mut SmallKvBuffer<'a>,
     ) -> Option<NonNull<T>> {
         let min_segments = self.min_segments?;
         let parts: SmallVec<[&str; 8]> = trim_first_slash(path).split('/').collect();
@@ -300,7 +294,7 @@ impl<T> Router<T> {
     fn find_regex<'a>(
         &'a self,
         path: &'a str,
-        captures: &mut SmallVec<[(&'a str, &'a str); 8]>,
+        captures: &mut SmallKvBuffer<'a>,
     ) -> Option<NonNull<T>> {
         for (regex, data) in &self.regexps {
             if let Some(caps) = regex.captures(path) {
@@ -318,7 +312,7 @@ impl<T> Router<T> {
         &'a self,
         path: &'a str,
         parts: &[&'a str],
-        captures: &mut SmallVec<[(&'a str, &'a str); 8]>,
+        captures: &mut SmallKvBuffer<'a>,
     ) -> Option<NonNull<T>> {
         let ret = self.find_regex(path, captures);
         if ret.is_some() {

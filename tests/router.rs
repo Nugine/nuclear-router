@@ -35,12 +35,11 @@ fn router_common() {
         ("/pan/phpinfo.php", 7, &[("name", "phpinfo")]),
     ];
 
-    for (url, data, captures) in cases.iter().skip(5) {
+    for &(url, data, captures) in cases.iter().skip(5) {
         dbg!((url, data));
         let ret = router.find(url).unwrap();
-        assert_eq!(ret.0, data);
-        let v: Vec<(&str, &str)> = ret.1.collect();
-        assert_eq!(&v, captures);
+        assert_eq!(*ret.0, data);
+        assert_eq!(&*ret.1, captures);
     }
 }
 
