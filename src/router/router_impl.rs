@@ -66,8 +66,7 @@ impl<T> Router<T> {
 
     pub fn find<'s, 'p, 't>(&'s self, path: &'p str) -> Option<(&'t T, Captures<'p>)>
     where
-        's: 'p,
-        's: 't,
+        's: 'p + 't,
     {
         let mut captures = Captures::new();
         let ptr = self.find_ptr(path, &mut captures.buf)?;
@@ -77,13 +76,17 @@ impl<T> Router<T> {
 
     pub fn find_mut<'s, 'p, 't>(&'s mut self, path: &'p str) -> Option<(&'t mut T, Captures<'p>)>
     where
-        's: 'p,
-        's: 't,
+        's: 'p + 't,
     {
         let mut captures = Captures::new();
         let ptr = self.find_ptr(path, &mut captures.buf)?;
         let data = unsafe { &mut *ptr.as_ptr() };
         Some((data, captures))
+    }
+
+    pub fn insert_regex(&mut self, pattern: Regex, data: T) -> &mut Self {
+        self.regexps.push((pattern, data));
+        self
     }
 
     pub fn insert(&mut self, pattern: &str, data: T) -> &mut Self {
@@ -100,18 +103,28 @@ impl<T> Router<T> {
         }
     }
 
-    pub fn insert_regex(&mut self, pattern: Regex, data: T) -> &mut Self {
-        self.regexps.push((pattern, data));
+    pub fn insert_router(&mut self, prefix: &str, router: Router<T>) -> &mut Self {
+        if let Err(e) = self.insert_endpoint(prefix, router.into()) {
+            panic!("{}: pattern = {:?}", e, prefix);
+        }
         self
+    }
+
+    pub fn try_insert_router(
+        &mut self,
+        prefix: &str,
+        router: Router<T>,
+    ) -> Result<&mut Self, RouterError> {
+        match self.insert_endpoint(prefix, router.into()) {
+            Ok(()) => Ok(self),
+            Err(msg) => Err(RouterError { msg }),
+        }
     }
 
     pub fn nest(&mut self, prefix: &str, f: impl FnOnce(&mut Router<T>)) -> &mut Self {
         let mut router = Self::new();
         f(&mut router);
-        if let Err(e) = self.insert_endpoint(prefix, router.into()) {
-            panic!("{}: pattern = {:?}", e, prefix);
-        }
-        self
+        self.insert_router(prefix, router)
     }
 
     pub fn try_nest(
@@ -121,10 +134,7 @@ impl<T> Router<T> {
     ) -> Result<&mut Self, RouterError> {
         let mut router = Self::new();
         f(&mut router);
-        match self.insert_endpoint(prefix, router.into()) {
-            Ok(()) => Ok(self),
-            Err(msg) => Err(RouterError { msg }),
-        }
+        self.try_insert_router(prefix, router)
     }
 }
 
@@ -427,7 +437,7 @@ impl<T> Router<T> {
     }
 }
 
-#[inline]
+#[inline(always)]
 fn trim_first_slash(s: &str) -> &str {
     if s.starts_with('/') {
         &s[1..]
@@ -436,7 +446,7 @@ fn trim_first_slash(s: &str) -> &str {
     }
 }
 
-#[inline]
+#[inline(always)]
 fn calc_offset(src: &str, dst: &str) -> isize {
     let p2 = dst.as_ptr() as isize;
     let p1 = src.as_ptr() as isize;

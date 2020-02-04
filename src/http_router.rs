@@ -25,8 +25,7 @@ impl<T> HttpRouter<T> {
         path: &'p str,
     ) -> Option<(&'t T, Captures<'p>)>
     where
-        's: 'p,
-        's: 't,
+        's: 'p + 't,
     {
         self.method_map.get(method)?.find(path)
     }
@@ -37,8 +36,7 @@ impl<T> HttpRouter<T> {
         path: &'p str,
     ) -> Option<(&'t mut T, Captures<'p>)>
     where
-        's: 'p,
-        's: 't,
+        's: 'p + 't,
     {
         self.method_map.get_mut(method)?.find_mut(path)
     }
@@ -80,29 +78,29 @@ impl<T> HttpRouter<T> {
         self.try_insert_router(prefix, sub_router)?;
         Ok(self)
     }
+
+    pub fn insert_router(&mut self, prefix: &str, router: HttpRouter<T>) {
+        for (method, router) in router.method_map {
+            self.access_router(method).insert_router(prefix, router);
+        }
+    }
+
+    pub fn try_insert_router(
+        &mut self,
+        prefix: &str,
+        router: HttpRouter<T>,
+    ) -> Result<&mut Self, RouterError> {
+        for (method, router) in router.method_map {
+            self.access_router(method)
+                .try_insert_router(prefix, router)?;
+        }
+        Ok(self)
+    }
 }
 
 impl<T> HttpRouter<T> {
     fn access_router(&mut self, method: Method) -> &mut Router<T> {
         self.method_map.entry(method).or_insert_with(Router::new)
-    }
-
-    fn try_insert_router(
-        &mut self,
-        prefix: &str,
-        router: HttpRouter<T>,
-    ) -> Result<(), RouterError> {
-        for (method, router) in router.method_map {
-            self.access_router(method)
-                .try_nest(prefix, |r| *r = router)?;
-        }
-        Ok(())
-    }
-
-    fn insert_router(&mut self, prefix: &str, router: HttpRouter<T>) {
-        for (method, router) in router.method_map {
-            self.access_router(method).nest(prefix, |r| *r = router);
-        }
     }
 }
 
@@ -115,7 +113,7 @@ macro_rules! http_router {
     }};
 
     {@entry $router:expr, @, $prefix:expr, $sub_router:expr} => {
-        $router.nest($prefix, |__r| *__r = $sub_router)
+        $router.insert_router($prefix, $sub_router)
     };
     {@entry $router:expr, GET, $pattern:expr, $data:expr} => {
         $router.insert($crate::http_router::Method::GET, $pattern, $data)
