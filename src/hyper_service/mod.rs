@@ -1,5 +1,17 @@
+mod handler;
 mod params;
 mod service;
 
+pub use self::handler::Handler;
 pub use self::params::Params;
-pub use self::service::{Handler, RouterService};
+pub use self::service::RouterService;
+
+use std::error::Error as StdError;
+use std::future::Future;
+use std::pin::Pin;
+
+type Request = hyper::Request<hyper::Body>;
+type Response = hyper::Response<hyper::Body>;
+
+type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
+type BoxError = Box<dyn StdError + Send + Sync>;
