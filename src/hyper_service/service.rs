@@ -4,6 +4,7 @@ use super::{BoxError, BoxFuture, Request, Response};
 
 use crate::http_router::{HttpRouter, Method};
 
+use std::sync::Arc;
 use std::task::{Context, Poll};
 
 use hyper::service::Service;
@@ -12,6 +13,9 @@ pub struct RouterService<H = BoxHandler> {
     router: HttpRouter<H>,
     default: H,
 }
+
+#[derive(Clone)]
+pub struct SharedRouterService<H = BoxHandler>(Arc<RouterService<H>>);
 
 impl<H> Service<Request> for RouterService<H>
 where
@@ -30,7 +34,7 @@ where
     }
 }
 
-impl<H> Service<Request> for &'_ RouterService<H>
+impl<H> Service<Request> for SharedRouterService<H>
 where
     H: Handler + Send + Sync,
 {
@@ -43,7 +47,7 @@ where
     }
 
     fn call(&mut self, req: Request) -> Self::Future {
-        RouterService::handle(self, req)
+        RouterService::handle(&*self.0, req)
     }
 }
 
@@ -67,6 +71,10 @@ where
 
     pub fn from_router(router: HttpRouter<H>, default: H) -> Self {
         Self { router, default }
+    }
+
+    pub fn into_shared(self) -> SharedRouterService<H> {
+        SharedRouterService(Arc::new(self))
     }
 }
 
@@ -103,50 +111,4 @@ impl HttpRouter<BoxHandler> {
     define_method!(connect, CONNECT);
     define_method!(patch, PATCH);
     define_method!(trace, TRACE);
-}
-
-#[macro_export]
-macro_rules! router_service {
-    {$($method:tt $pattern:expr => $data:expr),+ ; _ => $default:expr} => {{
-        let mut __router = $crate::http_router::HttpRouter::new();
-        $(router_service!(@entry __router, $method, $pattern, $data);)+
-        __router.with_default($default)
-    }};
-
-    {$($method:tt $pattern:expr => $data:expr),+} => {{
-        let mut __router = $crate::http_router::HttpRouter::new();
-        $(router_service!(@entry __router, $method, $pattern, $data);)+
-        __router
-    }};
-
-    {@entry $router:expr, @, $prefix:expr, $sub_router:expr} => {
-        $router.nest($prefix, |__r| *__r = $sub_router)
-    };
-    {@entry $router:expr, GET, $pattern:expr, $data:expr} => {
-        $router.route($crate::http_router::Method::GET, $pattern, $data)
-    };
-    {@entry $router:expr, POST, $pattern:expr, $data:expr} => {
-        $router.route($crate::http_router::Method::POST, $pattern, $data)
-    };
-    {@entry $router:expr, PUT, $pattern:expr, $data:expr} => {
-        $router.route($crate::http_router::Method::PUT, $pattern, $data)
-    };
-    {@entry $router:expr, DELETE, $pattern:expr, $data:expr} => {
-        $router.route($crate::http_router::Method::DELETE, $pattern, $data)
-    };
-    {@entry $router:expr, HEAD, $pattern:expr, $data:expr} => {
-        $router.route($crate::http_router::Method::HEAD, $pattern, $data)
-    };
-    {@entry $router:expr, OPTIONS, $pattern:expr, $data:expr} => {
-        $router.route($crate::http_router::Method::OPTIONS, $pattern, $data)
-    };
-    {@entry $router:expr, CONNECT, $pattern:expr, $data:expr} => {
-        $router.route($crate::http_router::Method::CONNECT, $pattern, $data)
-    };
-    {@entry $router:expr, PATCH, $pattern:expr, $data:expr} => {
-        $router.route($crate::http_router::Method::PATCH, $pattern, $data)
-    };
-    {@entry $router:expr, TRACE, $pattern:expr, $data:expr} => {
-        $router.route($crate::http_router::Method::TRACE, $pattern, $data)
-    };
 }
