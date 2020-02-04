@@ -21,5 +21,5 @@ cfg_feature! {
 cfg_feature! {
     "hyper-service";
     pub mod hyper_service;
-    pub use crate::hyper_service::{Params, RouterService};
+    pub use crate::hyper_service::{Params, RouterService, Handler};
 }
