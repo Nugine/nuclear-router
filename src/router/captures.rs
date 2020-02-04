@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 use std::ops::Deref;
 use std::str::FromStr;
 

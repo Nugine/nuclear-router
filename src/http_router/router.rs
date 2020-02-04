@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 use crate::router::{Captures, Router, RouterError};
 
 use std::collections::HashMap;

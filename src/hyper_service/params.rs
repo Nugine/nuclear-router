@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 use crate::router::Captures;
 
 use std::iter::{DoubleEndedIterator, ExactSizeIterator, FusedIterator};
