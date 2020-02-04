@@ -187,7 +187,11 @@ impl<T> Router<T> {
             None
         };
 
-        if self.check_collision(pattern, &parts, catch_all) {
+        if self.check_collision(
+            pattern,
+            catch_all.map(|i| &parts[..i]).unwrap_or(&parts),
+            catch_all,
+        ) {
             return Err("pattern collision occurred");
         }
 
@@ -273,27 +277,27 @@ impl<T> Router<T> {
             }
         }
 
-        let catch_from = match catch_all {
-            None => return !bitset.is_zero(),
-            Some(i) => i,
-        };
-
         let mut iter = bitset.iter_ones().map(|i| &self.routes[i]);
 
-        iter.any(|route: &Route<T>| match route.endpoint {
-            Endpoint::Data(_) => route.catch_all.map(|j| catch_from == j).unwrap_or(true),
-            Endpoint::Router(ref router) => parts
-                .get(catch_from)
-                .map(|p| (calc_offset(pattern, p) as usize).saturating_sub(1))
-                .map(|offset| {
-                    router.check_collision(
-                        &pattern[offset..],
-                        &parts[route.catch_all.unwrap()..],
-                        catch_all,
-                    )
-                })
-                .unwrap_or(false),
-        })
+        match catch_all {
+            None => iter.any(|route: &Route<T>| route.min_segments <= parts.len()),
+
+            Some(catch_from) => iter.any(|route: &Route<T>| match route.endpoint {
+                Endpoint::Data(_) => route.catch_all.map(|j| catch_from == j).unwrap_or(true),
+
+                Endpoint::Router(ref router) => parts
+                    .get(catch_from)
+                    .map(|p| (calc_offset(pattern, p) as usize).saturating_sub(1))
+                    .map(|offset| {
+                        router.check_collision(
+                            &pattern[offset..],
+                            &parts[route.catch_all.unwrap()..],
+                            catch_all,
+                        )
+                    })
+                    .unwrap_or(false),
+            }),
+        }
     }
 
     pub fn find_ptr<'a>(

@@ -46,21 +46,33 @@ fn router_common() {
 #[test]
 fn router_collision() {
     let mut router: Router<usize> = Router::new();
-    router.try_insert("/u/:id/p/:id", 1).unwrap();
-    router.try_insert("/u/:uid/p/:pid", 2).unwrap_err();
+    assert!(router.try_insert("/u/:id/p/:id", 1).is_ok());
+    assert!(router.try_insert("/u/:uid/p/:pid", 2).is_err());
 
     let mut router: Router<usize> = Router::new();
-    router.try_insert("/application/c/:a", 1).unwrap();
-    router.try_insert("/application/b", 2).unwrap();
-    router.try_insert("/application/b/:id", 3).unwrap();
+    assert!(router.try_insert("/u/:id/p/:id", 1).is_ok());
+    assert!(router.try_insert("/u/:uid/p", 2).is_ok());
 
     let mut router: Router<usize> = Router::new();
-    router.try_insert("/application/**", 1).unwrap();
-    router
+    assert!(router.try_insert("/u/:id/**", 1).is_ok());
+    assert!(router.try_insert("/u/:id/", 2).is_ok());
+
+    let mut router: Router<usize> = Router::new();
+    assert!(router.try_insert("/u/:id/**", 1).is_ok());
+    assert!(router.try_insert("/u/:id/**", 2).is_err());
+
+    let mut router: Router<usize> = Router::new();
+    assert!(router.try_insert("/application/c/:a", 1).is_ok());
+    assert!(router.try_insert("/application/b", 2).is_ok());
+    assert!(router.try_insert("/application/b/:id", 3).is_ok());
+
+    let mut router: Router<usize> = Router::new();
+    assert!(router.try_insert("/application/**", 1).is_ok());
+    assert!(router
         .try_nest("/application", |r| {
             r.insert("**", 2);
         })
-        .unwrap_err();
+        .is_err());
 }
 
 #[test]

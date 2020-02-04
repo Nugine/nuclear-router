@@ -72,10 +72,6 @@ impl<S: BitStorage> FixedBitSet<S> {
         *pos |= mask
     }
 
-    pub fn is_zero(&self) -> bool {
-        self.buf.as_bytes().iter().all(|&x| x == 0)
-    }
-
     pub fn iter_ones(&self) -> impl Iterator<Item = usize> + '_ {
         self.buf
             .as_bytes()
