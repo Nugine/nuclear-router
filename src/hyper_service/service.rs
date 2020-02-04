@@ -14,8 +14,13 @@ pub struct RouterService<H = BoxHandler> {
     default: H,
 }
 
-#[derive(Clone)]
 pub struct SharedRouterService<H = BoxHandler>(Arc<RouterService<H>>);
+
+impl<H> Clone for SharedRouterService<H> {
+    fn clone(&self) -> Self {
+        Self(Arc::clone(&self.0))
+    }
+}
 
 impl<H> Service<Request> for RouterService<H>
 where
