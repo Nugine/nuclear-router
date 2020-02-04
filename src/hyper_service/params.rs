@@ -51,9 +51,10 @@ impl Params {
 
     pub(super) fn new<'a>(path: &'a str, caps: &Captures<'a>) -> Self {
         let mut offset: Vec<(String, usize, usize)> = Vec::with_capacity(caps.len());
+        let base = path.as_ptr() as usize;
         offset.extend(caps.iter().map(|&(name, value)| {
             let name = name.to_owned();
-            let start = value.as_ptr() as usize;
+            let start = (value.as_ptr() as usize) - base;
             let end = start + value.len();
             (name, start, end)
         }));
