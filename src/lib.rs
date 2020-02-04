@@ -1,3 +1,10 @@
+#![warn(
+    nonstandard_style,
+    rust_2018_idioms,
+    future_incompatible,
+    missing_debug_implementations
+)]
+
 mod bitset;
 
 pub mod router;

@@ -3,6 +3,7 @@ use crate::router::Captures;
 use std::iter::{DoubleEndedIterator, ExactSizeIterator, FusedIterator};
 use std::str::FromStr;
 
+#[derive(Debug)]
 pub struct Params {
     path: Option<String>,
     offset: Vec<(String, usize, usize)>, // (name, start, end)
@@ -70,11 +71,13 @@ fn some_if<T>(cond: bool, f: impl FnOnce() -> T) -> Option<T> {
     }
 }
 
+#[derive(Debug)]
 pub struct Iter<'a> {
     path: Option<&'a str>,
     offset: std::slice::Iter<'a, (String, usize, usize)>,
 }
 
+#[derive(Debug)]
 pub struct IntoIter {
     path: Option<String>,
     offset: std::vec::IntoIter<(String, usize, usize)>,

@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+use std::fmt::{self, Debug};
 use std::ops::Deref;
 use std::str::FromStr;
 
@@ -33,5 +34,11 @@ impl Captures<'_> {
         Self {
             buf: SmallVec::new(),
         }
+    }
+}
+
+impl Debug for Captures<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        <Self as Deref>::Target::fmt(self, f)
     }
 }

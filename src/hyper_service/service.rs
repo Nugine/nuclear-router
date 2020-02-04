@@ -9,11 +9,13 @@ use std::task::{Context, Poll};
 
 use hyper::service::Service;
 
+#[derive(Debug)]
 pub struct RouterService<H = BoxHandler> {
     router: HttpRouter<H>,
     default: H,
 }
 
+#[derive(Debug)]
 pub struct SharedRouterService<H = BoxHandler>(Arc<RouterService<H>>);
 
 impl<H> Clone for SharedRouterService<H> {
