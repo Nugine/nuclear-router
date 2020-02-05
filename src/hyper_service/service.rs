@@ -66,7 +66,7 @@ where
         let method = req.method();
         let path = req.uri().path();
         let (handler, params) = match self.router.find(method, path) {
-            Some((h, caps)) => (h, Params::new(path, &caps)),
+            Some((h, caps)) => (h, Params::new(&caps)),
             None => (&self.default, Params::empty()),
         };
         Handler::call(handler, req, params)

@@ -7,7 +7,8 @@ use std::str::FromStr;
 use smallvec::SmallVec;
 
 pub struct Captures<'a> {
-    pub(super) buf: SmallVec<[(&'a str, &'a str); 8]>,
+    path: &'a str,
+    buf: SmallVec<[(&'a str, &'a str); 8]>,
 }
 
 impl Captures<'_> {
@@ -29,16 +30,30 @@ impl<'a> Deref for Captures<'a> {
     }
 }
 
-impl Captures<'_> {
-    pub(super) fn new() -> Self {
+impl<'a> Captures<'a> {
+    pub(super) fn new(path: &'a str) -> Self {
         Self {
+            path,
             buf: SmallVec::new(),
         }
+    }
+
+    #[inline(always)]
+    pub(crate) fn buffer(&mut self) -> &mut SmallVec<[(&'a str, &'a str); 8]> {
+        &mut self.buf
+    }
+
+    #[inline(always)]
+    pub(crate) fn path(&self)->&'a str{
+        self.path
     }
 }
 
 impl Debug for Captures<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        <Self as Deref>::Target::fmt(self, f)
+        f.debug_struct("Captures")
+            .field("path", &self.path)
+            .field("buf", &self.buf.as_slice())
+            .finish()
     }
 }

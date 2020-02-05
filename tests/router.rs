@@ -38,6 +38,7 @@ fn router_common() {
     for &(url, data, captures) in cases.iter().skip(5) {
         dbg!((url, data));
         let ret = router.find(url).unwrap();
+        dbg!(&ret);
         assert_eq!(*ret.0, data);
         assert_eq!(&*ret.1, captures);
     }

@@ -68,8 +68,8 @@ impl<T> Router<T> {
     where
         's: 'p + 't,
     {
-        let mut captures = Captures::new();
-        let ptr = self.find_ptr(path, &mut captures.buf)?;
+        let mut captures = Captures::new(path);
+        let ptr = self.find_ptr(path, captures.buffer())?;
         let data = unsafe { &*ptr.as_ptr() };
         Some((data, captures))
     }
@@ -78,8 +78,8 @@ impl<T> Router<T> {
     where
         's: 'p + 't,
     {
-        let mut captures = Captures::new();
-        let ptr = self.find_ptr(path, &mut captures.buf)?;
+        let mut captures = Captures::new(path);
+        let ptr = self.find_ptr(path, captures.buffer())?;
         let data = unsafe { &mut *ptr.as_ptr() };
         Some((data, captures))
     }
