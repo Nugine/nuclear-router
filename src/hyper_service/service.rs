@@ -8,6 +8,7 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 
 use hyper::service::Service;
+use regex::Regex;
 
 #[derive(Debug)]
 pub struct RouterService<H = BoxHandler> {
@@ -93,6 +94,26 @@ impl HttpRouter<BoxHandler> {
         h: impl Handler + Send + Sync + 'static,
     ) -> &mut Self {
         self.insert(method, path, Box::new(h))
+    }
+
+    pub fn route_regex(
+        &mut self,
+        method: Method,
+        regex: Regex,
+        h: impl Handler + Send + Sync + 'static,
+    ) -> &mut Self {
+        self.insert_regex(method, regex, Box::new(h))
+    }
+
+    pub fn route_regexes<I, H>(&mut self, iter: I) -> &mut Self
+    where
+        I: IntoIterator<Item = (Method, Regex, H)>,
+        H: Handler + Send + Sync + 'static,
+    {
+        self.insert_regexes(
+            iter.into_iter()
+                .map(|(m, r, h)| (m, r, Box::new(h) as BoxHandler)),
+        )
     }
 
     pub fn with_default(self, default: impl Handler + Send + Sync + 'static) -> RouterService {

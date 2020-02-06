@@ -6,7 +6,7 @@ use crate::bitset::{BitStorage, FixedBitSet, TABLE};
 use std::collections::HashMap;
 use std::ptr::NonNull;
 
-use regex::Regex;
+use regex::{Regex, RegexSet};
 use smallvec::SmallVec;
 
 #[derive(Debug, Default)]
@@ -14,7 +14,8 @@ pub struct Router<T> {
     min_segments: Option<usize>,
     segments: Vec<Segment>,
     routes: Vec<Route<T>>,
-    regexps: Vec<(Regex, T)>,
+    regexes: Vec<(Regex, T)>,
+    regex_set: Option<RegexSet>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -53,15 +54,16 @@ impl<T> Router<T> {
         Self {
             segments: vec![],
             routes: vec![],
-            regexps: vec![],
+            regexes: vec![],
             min_segments: None,
+            regex_set: None,
         }
     }
 
     pub fn clear(&mut self) {
         self.segments.clear();
         self.routes.clear();
-        self.regexps.clear();
+        self.regexes.clear();
     }
 
     pub fn find<'s, 'p, 't>(&'s self, path: &'p str) -> Option<(&'t T, Captures<'p>)>
@@ -85,7 +87,17 @@ impl<T> Router<T> {
     }
 
     pub fn insert_regex(&mut self, pattern: Regex, data: T) -> &mut Self {
-        self.regexps.push((pattern, data));
+        self.regexes.push((pattern, data));
+        self.regex_set = Some(RegexSet::new(self.regexes.iter().map(|(r, _)| r.as_str())).unwrap());
+        self
+    }
+
+    pub fn insert_regexes<I>(&mut self, iter: I) -> &mut Self
+    where
+        I: IntoIterator<Item = (Regex, T)>,
+    {
+        self.regexes.extend(iter);
+        self.regex_set = Some(RegexSet::new(self.regexes.iter().map(|(r, _)| r.as_str())).unwrap());
         self
     }
 
@@ -318,16 +330,16 @@ impl<T> Router<T> {
         path: &'a str,
         captures: &mut SmallKvBuffer<'a>,
     ) -> Option<NonNull<T>> {
-        for (regex, data) in &self.regexps {
-            if let Some(caps) = regex.captures(path) {
-                for name in regex.capture_names().flatten() {
-                    let text = caps.name(name).unwrap().as_str();
-                    captures.push((name, text))
-                }
-                return Some(NonNull::from(data));
-            }
+        let regex_set = self.regex_set.as_ref()?;
+        let mut matches = regex_set.matches(path).into_iter();
+        let i = matches.next()?;
+        let (regex, data) = &self.regexes[i];
+        let caps = regex.captures(path).unwrap();
+        for name in regex.capture_names().flatten() {
+            let text = caps.name(name).unwrap().as_str();
+            captures.push((name, text))
         }
-        None
+        Some(NonNull::from(data))
     }
 
     fn find_with_parts<'a>(

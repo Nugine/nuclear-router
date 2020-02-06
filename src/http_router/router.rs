@@ -59,6 +59,20 @@ impl<T> HttpRouter<T> {
         self
     }
 
+    pub fn insert_regexes<I>(&mut self, iter: I) -> &mut Self
+    where
+        I: IntoIterator<Item = (Method, Regex, T)>,
+    {
+        let mut items: HashMap<Method, Vec<(Regex, T)>> = HashMap::new();
+        for (m, r, t) in iter {
+            items.entry(m).or_insert_with(Vec::new).push((r, t))
+        }
+        for (m, v) in items {
+            self.access_router(m).insert_regexes(v);
+        }
+        self
+    }
+
     pub fn nest(&mut self, prefix: &str, f: impl FnOnce(&mut HttpRouter<T>)) -> &mut Self {
         let mut sub_router = Self::new();
         f(&mut sub_router);
