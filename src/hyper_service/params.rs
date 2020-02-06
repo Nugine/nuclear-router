@@ -5,8 +5,8 @@ use std::str::FromStr;
 
 #[derive(Debug)]
 pub struct Params {
-    path: Option<String>,
-    offset: Vec<(String, usize, usize)>, // (name, start, end)
+    path: Option<Box<str>>,
+    offset: Vec<(Box<str>, usize, usize)>, // (name, start, end)
 }
 
 impl Params {
@@ -18,15 +18,15 @@ impl Params {
     }
 
     pub fn new<'a>(caps: &Captures<'a>) -> Self {
-        let mut offset: Vec<(String, usize, usize)> = Vec::with_capacity(caps.len());
+        let mut offset: Vec<(Box<str>, usize, usize)> = Vec::with_capacity(caps.len());
         let base = caps.path().as_ptr() as usize;
         offset.extend(caps.iter().map(|&(name, value)| {
-            let name = name.to_owned();
+            let name = name.into();
             let start = (value.as_ptr() as usize) - base;
             let end = start + value.len();
             (name, start, end)
         }));
-        let path = some_if(!offset.is_empty(), || caps.path().to_owned());
+        let path = some_if(!offset.is_empty(), || caps.path().into());
         Self { path, offset }
     }
 
@@ -34,7 +34,7 @@ impl Params {
         let path = self.path.as_ref()?;
         self.offset
             .iter()
-            .find_map(|&(ref n, s, e)| some_if(n == name, || &path[s..e]))
+            .find_map(|&(ref n, s, e)| some_if(&**n == name, || &path[s..e]))
     }
 
     pub fn parse<T: FromStr>(&self, name: &str) -> Option<Result<T, T::Err>> {
@@ -72,13 +72,13 @@ impl IntoIterator for Params {
 #[derive(Debug)]
 pub struct Iter<'a> {
     path: Option<&'a str>,
-    offset: std::slice::Iter<'a, (String, usize, usize)>,
+    offset: std::slice::Iter<'a, (Box<str>, usize, usize)>,
 }
 
 #[derive(Debug)]
 pub struct IntoIter {
-    path: Option<String>,
-    offset: std::vec::IntoIter<(String, usize, usize)>,
+    path: Option<Box<str>>,
+    offset: std::vec::IntoIter<(Box<str>, usize, usize)>,
 }
 
 macro_rules! delegate {
@@ -86,7 +86,7 @@ macro_rules! delegate {
         fn $method(&mut self) -> Option<Self::Item> {
             let &(ref n, s, e) = self.offset.$method()?;
             let path = self.path.unwrap();
-            Some((n.as_str(), &path[s..e]))
+            Some((&**n, &path[s..e]))
         }
     };
 
@@ -94,7 +94,7 @@ macro_rules! delegate {
         fn $method(&mut self) -> Option<Self::Item> {
             let (n, s, e) = self.offset.$method()?;
             let path = self.path.as_ref().unwrap();
-            Some((n, path[s..e].to_owned()))
+            Some((n.into(), path[s..e].to_owned()))
         }
     };
 
