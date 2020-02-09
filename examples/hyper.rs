@@ -21,7 +21,7 @@ async fn hello(_: Request<Body>, params: Params) -> Result<Response<Body>, Never
 }
 
 async fn file(_: Request<Body>, params: Params) -> Result<Response<Body>, Never> {
-    let path = params.get("**").unwrap();
+    let path = params.get("filepath").unwrap();
     dbg!(path);
     Ok(Response::new(Body::from(format!("access file: {}", path))))
 }
@@ -31,7 +31,7 @@ async fn main() {
     let router = router_service! {
         GET "/hello/:name" => hello,
         @ "/api/v1" => router_service!{
-            GET "/file/**" => file
+            GET "/file/*filepath" => file
         };
         _ => not_found
     }
