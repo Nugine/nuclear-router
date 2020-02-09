@@ -10,11 +10,11 @@ fn http_router_macro() {
             GET "/info" => 3_i32,
             POST "/info" => 4,
             @ "/u/:uid" => http_router!{
-                GET "p/:pid" => 6,
-                POST "p" => 7
+                GET "/p/:pid" => 6,
+                POST "/p" => 7
             }
         },
-        HEAD "**" => 5
+        HEAD "/**" => 5
     };
 
     assert_eq!(*router.find(&Method::GET, "/u/asd/p/qwe").unwrap().0, 1);

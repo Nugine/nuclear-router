@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 use std::fmt::{self, Debug};
 use std::ops::Deref;
 use std::str::FromStr;
@@ -44,7 +42,7 @@ impl<'a> Captures<'a> {
     }
 
     #[inline(always)]
-    pub(crate) fn path(&self)->&'a str{
+    pub(crate) fn path(&self) -> &'a str {
         self.path
     }
 }

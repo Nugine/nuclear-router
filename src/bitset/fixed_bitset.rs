@@ -9,15 +9,18 @@ pub unsafe trait BitStorage: Sized {
     }
 
     fn as_bytes(&self) -> &[u8] {
-        unsafe { slice::from_raw_parts(self as *const _ as *const u8, Self::bit_size() / 8) }
+        unsafe { slice::from_raw_parts(self as *const _ as *const u8, mem::size_of::<Self>()) }
     }
     fn as_bytes_mut(&mut self) -> &mut [u8] {
-        unsafe { slice::from_raw_parts_mut(self as *mut _ as *mut u8, Self::bit_size() / 8) }
+        unsafe { slice::from_raw_parts_mut(self as *mut _ as *mut u8, mem::size_of::<Self>()) }
     }
 }
 
-unsafe impl BitStorage for [u128; 4] {}
 unsafe impl BitStorage for u128 {}
+unsafe impl BitStorage for u64 {}
+unsafe impl BitStorage for u32 {}
+unsafe impl BitStorage for u16 {}
+unsafe impl BitStorage for u8 {}
 
 #[derive(Debug, Clone)]
 pub struct FixedBitSet<S: BitStorage> {
@@ -52,8 +55,12 @@ impl<S: BitStorage> FixedBitSet<S> {
             .for_each(|(lhs, rhs)| *lhs &= rhs)
     }
 
-    pub fn get_inner(&self) -> &S {
-        &self.buf
+    pub fn union_with(&mut self, other: &Self) {
+        self.buf
+            .as_bytes_mut()
+            .iter_mut()
+            .zip(other.buf.as_bytes().iter())
+            .for_each(|(lhs, rhs)| *lhs |= rhs)
     }
 
     pub fn set(&mut self, index: usize, bit: bool) {
@@ -76,7 +83,7 @@ impl<S: BitStorage> FixedBitSet<S> {
         self.buf
             .as_bytes()
             .iter()
-            .flat_map(|&x| TABLE[x as usize])
-            .cloned()
+            .enumerate()
+            .flat_map(|(i, &x)| TABLE[x as usize].iter().map(move |&j| i * 8 + j))
     }
 }

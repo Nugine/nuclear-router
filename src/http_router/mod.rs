@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 mod router;
 mod router_macro;
 

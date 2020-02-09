@@ -1,20 +1,18 @@
 use nuclear_router::Router;
-use regex::Regex;
 
 #[test]
 fn router_common() {
     let mut router: Router<usize> = Router::new();
     router
         .nest("/user/:user_id", |user| {
-            user.insert("post/:post_id", 1)
-                .insert("profile", 2)
-                .insert("file/**", 3)
-                .insert("", 4);
+            user.insert("/post/:post_id", 1)
+                .insert("/profile", 2)
+                .insert("/file/*filepath", 3)
+                .insert("/", 4);
         })
-        .insert("explore", 5)
-        .nest("pan", |pan| {
-            pan.insert("**", 6)
-                .insert_regex(Regex::new(".*/(?P<name>.+)\\.php$").unwrap(), 7);
+        .insert("/explore", 5)
+        .nest("/pan", |pan| {
+            pan.insert("/*filepath", 6);
         });
 
     let cases: &[(_, _, &[(&str, &str)])] = &[
@@ -27,12 +25,11 @@ fn router_common() {
         (
             "/user/asd/file/home/asd/.bashrc",
             3,
-            &[("user_id", "asd"), ("**", "/home/asd/.bashrc")],
+            &[("user_id", "asd"), ("filepath", "/home/asd/.bashrc")],
         ),
         ("/user/asd/", 4, &[("user_id", "asd")]),
         ("/explore", 5, &[]),
-        ("/pan/home/asd", 6, &[("**", "/home/asd")]),
-        ("/pan/phpinfo.php", 7, &[("name", "phpinfo")]),
+        ("/pan/home/asd", 6, &[("filepath", "/home/asd")]),
     ];
 
     for &(url, data, captures) in cases.iter().skip(5) {
@@ -71,7 +68,7 @@ fn router_collision() {
     assert!(router.try_insert("/application/**", 1).is_ok());
     assert!(router
         .try_nest("/application", |r| {
-            r.insert("**", 2);
+            r.insert("/**", 2);
         })
         .is_err());
 }
@@ -100,9 +97,9 @@ fn router_prefix() {
 fn router_nested() {
     let mut router: Router<usize> = Router::new();
 
-    router.nest("v1", |v1| {
-        v1.nest("u/:uid", |u| {
-            u.insert("p/:pid", 1);
+    router.nest("/v1", |v1| {
+        v1.nest("/u/:uid", |u| {
+            u.insert("/p/:pid", 1);
         });
     });
 

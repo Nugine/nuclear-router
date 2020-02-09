@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 pub const TABLE: [&[usize]; 256] = [
     &[],
     &[0],

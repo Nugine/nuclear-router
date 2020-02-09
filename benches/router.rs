@@ -29,11 +29,11 @@ fn router_find(c: &mut Criterion) {
             let c = std::char::from_u32('a' as u32 + i).unwrap();
             pattern.push(c);
         }
-        for i in 0..512 {
+        for i in 0..128 {
             let pattern = format!("{}/{}", pattern, i);
             router.insert(&pattern, i);
         }
-        pattern.push_str("/128");
+        pattern.push_str("/64");
         b.iter_with_large_drop(|| router.find(&pattern))
     });
 }
@@ -58,7 +58,7 @@ fn router_insert(c: &mut Criterion) {
             let c = std::char::from_u32('a' as u32 + i).unwrap();
             pattern.push(c);
         }
-        pattern.push_str("/128");
+        pattern.push_str("/64");
 
         b.iter_batched_ref(
             Router::new,

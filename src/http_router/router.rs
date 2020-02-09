@@ -3,7 +3,6 @@ use crate::router::{Captures, Router, RouterError};
 use std::collections::HashMap;
 
 pub use http::Method;
-use regex::Regex;
 
 #[derive(Debug, Default)]
 pub struct HttpRouter<T> {
@@ -52,25 +51,6 @@ impl<T> HttpRouter<T> {
     ) -> Result<&mut Self, RouterError> {
         self.access_router(method).try_insert(pattern, data)?;
         Ok(self)
-    }
-
-    pub fn insert_regex(&mut self, method: Method, pattern: Regex, data: T) -> &mut Self {
-        self.access_router(method).insert_regex(pattern, data);
-        self
-    }
-
-    pub fn insert_regexes<I>(&mut self, iter: I) -> &mut Self
-    where
-        I: IntoIterator<Item = (Method, Regex, T)>,
-    {
-        let mut items: HashMap<Method, Vec<(Regex, T)>> = HashMap::new();
-        for (m, r, t) in iter {
-            items.entry(m).or_insert_with(Vec::new).push((r, t))
-        }
-        for (m, v) in items {
-            self.access_router(m).insert_regexes(v);
-        }
-        self
     }
 
     pub fn nest(&mut self, prefix: &str, f: impl FnOnce(&mut HttpRouter<T>)) -> &mut Self {
