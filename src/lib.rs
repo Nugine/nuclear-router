@@ -8,7 +8,7 @@
 
 mod bitset;
 
-pub mod router;
+mod router;
 pub use crate::router::{Captures, Router, RouterError};
 
 macro_rules! cfg_feature{
@@ -29,5 +29,5 @@ cfg_feature! {
 cfg_feature! {
     "hyper-service";
     pub mod hyper_service;
-    pub use crate::hyper_service::{Params, RouterService, Handler};
+    pub use crate::hyper_service::{Params, RouterService, Handler, SharedRouterService};
 }

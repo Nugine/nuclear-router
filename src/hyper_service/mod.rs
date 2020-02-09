@@ -5,7 +5,7 @@ mod service_macro;
 
 pub use self::handler::Handler;
 pub use self::params::Params;
-pub use self::service::RouterService;
+pub use self::service::{RouterService, SharedRouterService};
 
 use std::error::Error as StdError;
 use std::future::Future;
