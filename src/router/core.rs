@@ -50,7 +50,8 @@ impl<T> Router<T> {
         if !pattern.starts_with(SLASH) {
             return Err("pattern must start with '/'");
         }
-        let pattern = &pattern[1..];
+        // safety: pattern.len() >= 1
+        let pattern = unsafe { pattern.get_unchecked(1..) };
 
         if self.routes.len() >= 128 {
             return Err("a single router can not hold more than 128 routes");
@@ -65,9 +66,12 @@ impl<T> Router<T> {
         let nested = endpoint.is_router();
 
         let wildcard: Option<Box<str>> = {
-            let last = *parts.last().unwrap();
+            // safety: parts.len() >= 1
+            let last = unsafe { parts.get_unchecked(parts.len() - 1) };
+
             if last.starts_with(STAR) {
-                let last: Box<str> = last[1..].into();
+                // safety: last.len() >= 1
+                let last: Box<str> = unsafe { last.get_unchecked(1..) }.into();
                 if last.is_empty() {
                     return Err("capture name can not be empty");
                 }
@@ -91,7 +95,9 @@ impl<T> Router<T> {
         for (i, &part) in parts.iter().enumerate() {
             rank <<= 1;
             if part.starts_with(COLON) {
-                captures.push((part[1..].into(), i));
+                // safety: part.len() >= 1
+                let name: Box<str> = unsafe { part.get_unchecked(1..) }.into();
+                captures.push((name, i));
             } else {
                 rank |= 1;
             }
@@ -111,7 +117,11 @@ impl<T> Router<T> {
                 }
                 enable_mask.intersect_with(&e);
             }
-            let mut iter = enable_mask.iter_ones().map(|i| &self.routes[i]);
+            // safety: FixedBitSet<u128>.iter_ones(), i in 0..128, and routes.len() < 128
+            let mut iter = enable_mask
+                .iter_ones()
+                .map(|i| unsafe { self.routes.get_unchecked(i) });
+
             iter.any(|route: &Route| -> bool {
                 if route.nested {
                     return nested || segment_num >= route.segment_num;
@@ -147,7 +157,9 @@ impl<T> Router<T> {
 
         if nested | wildcard.is_some() {
             let pos = parts.len();
-            for s in self.segments[pos..].iter_mut() {
+            // safety: parts.len() <= segment_num <= self.segments.len()
+            let segs = unsafe { self.segments.get_unchecked_mut(pos..) };
+            for s in segs.iter_mut() {
                 s.dynamic.set(id, true);
                 s.wildcard.set(id, true);
             }
@@ -167,13 +179,24 @@ impl<T> Router<T> {
 }
 
 impl<T> Router<T> {
-    pub(super) fn find_ptr<'p, 's: 'p>(
+    pub(super) fn real_find<'p, 's: 'p>(
         &'s self,
         path: &'p str,
         captures: &mut SmallKvBuffer<'p>,
-    ) -> Option<NonNull<T>> {
+    ) -> Option<&'s T> {
         let parts: SmallVec<[&str; 8]> = trim_first_slash(path).split(SLASH).collect();
         self.find_with_parts(path, &parts, captures)
+            .map(|p| unsafe { &*p.as_ptr() })
+    }
+
+    pub(super) fn real_find_mut<'p, 's: 'p>(
+        &'s self,
+        path: &'p str,
+        captures: &mut SmallKvBuffer<'p>,
+    ) -> Option<&'s mut T> {
+        let parts: SmallVec<[&str; 8]> = trim_first_slash(path).split(SLASH).collect();
+        self.find_with_parts(path, &parts, captures)
+            .map(|p| unsafe { &mut *p.as_ptr() })
     }
 
     fn find_with_parts<'p, 's: 'p>(
@@ -196,39 +219,47 @@ impl<T> Router<T> {
             enable_mask.intersect_with(&e);
         }
         if parts.len() > self.segments.len() {
-            let last_wildcard = &self.segments.last().unwrap().wildcard;
+            // safety: self.routes is not empty so that self.segments is not empty
+            let last_wildcard = unsafe {
+                &self
+                    .segments
+                    .get_unchecked(self.segments.len() - 1)
+                    .wildcard
+            };
             enable_mask.intersect_with(last_wildcard);
         }
 
         let idx = enable_mask
             .iter_ones()
-            .filter(|&i| self.routes[i].segment_num <= parts.len())
+            .filter(|&i| unsafe { self.routes.get_unchecked(i).segment_num <= parts.len() })
             .max_by(|&i, &j| {
-                let lhs = &self.routes[i];
-                let rhs = &self.routes[j];
+                let lhs = unsafe { self.routes.get_unchecked(i) };
+                let rhs = unsafe { self.routes.get_unchecked(j) };
                 if lhs.segment_num != rhs.segment_num {
                     return lhs.segment_num.cmp(&rhs.segment_num);
                 }
                 lhs.rank.cmp(&rhs.rank)
             })?;
 
-        let route = &self.routes[idx];
+        let route = unsafe { self.routes.get_unchecked(idx) };
         for &(ref name, i) in route.captures.iter() {
-            captures.push((&**name, parts[i]));
+            // safety: i < route.segment_num <= parts.len()
+            captures.push((&**name, unsafe { parts.get_unchecked(i) }));
         }
         if let Some(ref name) = route.wildcard {
+            // safety: parts and path point to the same str, and path is the base ptr
             let offset =
                 (calc_offset(path, parts[route.segment_num - 1]) as usize).saturating_sub(1);
-            captures.push((&**name, &path[offset..]));
+            captures.push((&**name, unsafe { path.get_unchecked(offset..) }));
         }
 
-        let endpoint = &self.endpoints[idx];
+        let endpoint = unsafe { self.endpoints.get_unchecked(idx) };
         match endpoint {
             Endpoint::Data(t) => Some(NonNull::from(t)),
             Endpoint::Router(r) => {
-                let parts = &parts[(route.segment_num - 1)..];
+                let parts = unsafe { parts.get_unchecked((route.segment_num - 1)..) };
                 let offset = (calc_offset(path, parts[0]) as usize).saturating_sub(1);
-                let path = &path[offset..];
+                let path = unsafe { path.get_unchecked(offset..) };
                 r.find_with_parts(path, parts, captures)
             }
         }
@@ -238,7 +269,7 @@ impl<T> Router<T> {
 #[inline(always)]
 fn trim_first_slash(s: &str) -> &str {
     if s.starts_with(SLASH) {
-        &s[1..]
+        unsafe { s.get_unchecked(1..) }
     } else {
         s
     }

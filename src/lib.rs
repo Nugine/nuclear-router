@@ -4,7 +4,6 @@
     future_incompatible,
     missing_debug_implementations
 )]
-
 #![deny(unsafe_code)]
 
 mod bitset;

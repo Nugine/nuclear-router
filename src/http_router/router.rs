@@ -16,25 +16,19 @@ impl<T> HttpRouter<T> {
         }
     }
 
-    pub fn find<'s, 'p, 't>(
+    pub fn find<'p, 's: 'p>(
         &'s self,
         method: &Method,
         path: &'p str,
-    ) -> Option<(&'t T, Captures<'p>)>
-    where
-        's: 'p + 't,
-    {
+    ) -> Option<(&'s T, Captures<'p>)> {
         self.method_map.get(method)?.find(path)
     }
 
-    pub fn find_mut<'s, 'p, 't>(
+    pub fn find_mut<'p, 's: 'p>(
         &'s mut self,
         method: &Method,
         path: &'p str,
-    ) -> Option<(&'t mut T, Captures<'p>)>
-    where
-        's: 'p + 't,
-    {
+    ) -> Option<(&'s mut T, Captures<'p>)> {
         self.method_map.get_mut(method)?.find_mut(path)
     }
 

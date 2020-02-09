@@ -1,5 +1,3 @@
-#![allow(unsafe_code)]
-
 use super::captures::Captures;
 use super::error::RouterError;
 use super::Router;
@@ -19,23 +17,15 @@ impl<T> Router<T> {
         self.endpoints.clear();
     }
 
-    pub fn find<'s, 'p, 't>(&'s self, path: &'p str) -> Option<(&'t T, Captures<'p>)>
-    where
-        's: 'p + 't,
-    {
+    pub fn find<'p, 's: 'p>(&'s self, path: &'p str) -> Option<(&'s T, Captures<'p>)> {
         let mut captures = Captures::new(path);
-        let ptr = self.find_ptr(path, captures.buffer())?;
-        let data = unsafe { &*ptr.as_ptr() };
+        let data = self.real_find(path, &mut captures.buffer())?;
         Some((data, captures))
     }
 
-    pub fn find_mut<'s, 'p, 't>(&'s mut self, path: &'p str) -> Option<(&'t mut T, Captures<'p>)>
-    where
-        's: 'p + 't,
-    {
+    pub fn find_mut<'p, 's: 'p>(&'s mut self, path: &'p str) -> Option<(&'s mut T, Captures<'p>)> {
         let mut captures = Captures::new(path);
-        let ptr = self.find_ptr(path, captures.buffer())?;
-        let data = unsafe { &mut *ptr.as_ptr() };
+        let data = self.real_find_mut(path, &mut captures.buffer())?;
         Some((data, captures))
     }
 
