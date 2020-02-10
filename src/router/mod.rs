@@ -23,6 +23,7 @@ struct Segment {
     static_map: StrMap<FixedBitSet<u128>>,
     dynamic: FixedBitSet<u128>,
     wildcard: FixedBitSet<u128>,
+    num_mask: FixedBitSet<u128>,
 }
 
 #[derive(Debug)]

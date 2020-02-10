@@ -30,15 +30,16 @@ impl<T> Router<T> {
     }
 
     fn extend_segments(segments: &mut Vec<Segment>, num: usize) {
-        let base = match segments.last() {
-            Some(s) => s.wildcard.clone(),
-            None => FixedBitSet::zero(),
+        let (wildcard_base, num_base) = match segments.last() {
+            Some(s) => (s.wildcard.clone(), s.num_mask.clone()),
+            None => (FixedBitSet::zero(), FixedBitSet::zero()),
         };
 
         segments.resize_with(num, || Segment {
             static_map: StrMap::new(),
-            dynamic: base.clone(),
-            wildcard: base.clone(),
+            dynamic: wildcard_base.clone(),
+            wildcard: wildcard_base.clone(),
+            num_mask: num_base.clone(),
         });
     }
 
@@ -158,9 +159,17 @@ impl<T> Router<T> {
             let pos = parts.len();
             // safety: parts.len() <= segment_num <= self.segments.len()
             let segs = unsafe { self.segments.get_unchecked_mut(pos..) };
-            for s in segs.iter_mut() {
+            for s in segs {
                 s.dynamic.set(id, true);
                 s.wildcard.set(id, true);
+            }
+        }
+
+        {
+            let pos = segment_num - 1;
+            let segs = unsafe { self.segments.get_unchecked_mut(pos..) };
+            for s in segs {
+                s.num_mask.set(id, true);
             }
         }
 
@@ -227,20 +236,21 @@ impl<T> Router<T> {
             };
             enable_mask.intersect_with(last_wildcard);
         }
+        if parts.len() - 1 < self.segments.len() {
+            let s = unsafe { self.segments.get_unchecked(parts.len() - 1) };
+            enable_mask.intersect_with(&s.num_mask);
+        }
 
-        let idx = enable_mask
+        let route = enable_mask
             .iter_ones()
-            .filter(|&i| unsafe { self.routes.get_unchecked(i).segment_num <= parts.len() })
-            .max_by(|&i, &j| {
-                let lhs = unsafe { self.routes.get_unchecked(i) };
-                let rhs = unsafe { self.routes.get_unchecked(j) };
+            .map(|i| unsafe { self.routes.get_unchecked(i) })
+            .max_by(|lhs, rhs| {
                 if lhs.segment_num != rhs.segment_num {
                     return lhs.segment_num.cmp(&rhs.segment_num);
                 }
                 lhs.rank.cmp(&rhs.rank)
             })?;
 
-        let route = unsafe { self.routes.get_unchecked(idx) };
         for &(ref name, i) in route.captures.iter() {
             // safety: i < route.segment_num <= parts.len()
             captures.push((&**name, unsafe { parts.get_unchecked(i) }));
@@ -252,6 +262,7 @@ impl<T> Router<T> {
             captures.push((&**name, unsafe { path.get_unchecked(offset..) }));
         }
 
+        let idx = unsafe { offset_from(route, self.routes.as_ptr()) };
         let endpoint = unsafe { self.endpoints.get_unchecked(idx) };
         match endpoint {
             Endpoint::Data(t) => Some(NonNull::from(t)),
@@ -279,4 +290,11 @@ fn calc_offset(src: &str, dst: &str) -> isize {
     let p2 = dst.as_ptr() as isize;
     let p1 = src.as_ptr() as isize;
     p2 - p1
+}
+
+// safety: caller should ensure that size_of::<T>() != 0 and ptr >= src
+#[inline(always)]
+unsafe fn offset_from<T>(ptr: *const T, src: *const T) -> usize {
+    assert!(std::mem::size_of::<T>() != 0);
+    (ptr as usize).wrapping_sub(src as usize) / std::mem::size_of::<T>()
 }
