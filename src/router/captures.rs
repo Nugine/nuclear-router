@@ -41,6 +41,7 @@ impl<'a> Captures<'a> {
         &mut self.buf
     }
 
+    #[cfg(feature = "hyper-service")]
     #[inline(always)]
     pub(crate) fn path(&self) -> &'a str {
         self.path
