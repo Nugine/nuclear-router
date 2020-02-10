@@ -4,8 +4,8 @@ use super::endpoint::Endpoint;
 use super::{Route, Router, Segment};
 
 use crate::bitset::FixedBitSet;
+use crate::strmap::StrMap;
 
-use std::collections::HashMap;
 use std::ptr::NonNull;
 
 use smallvec::SmallVec;
@@ -36,7 +36,7 @@ impl<T> Router<T> {
         };
 
         segments.resize_with(num, || Segment {
-            static_map: HashMap::new(),
+            static_map: StrMap::new(),
             dynamic: base.clone(),
             wildcard: base.clone(),
         });
@@ -111,7 +111,7 @@ impl<T> Router<T> {
             for (part, s) in parts.iter().cloned().zip(self.segments.iter()) {
                 let mut e = s.dynamic.clone();
                 if !part.starts_with(COLON) {
-                    if let Some(m) = s.static_map.get(part) {
+                    if let Some(m) = s.static_map.find(part) {
                         e.union_with(m);
                     }
                 }
@@ -149,8 +149,7 @@ impl<T> Router<T> {
                 s.dynamic.set(id, true)
             } else {
                 s.static_map
-                    .entry(part.into())
-                    .or_insert_with(FixedBitSet::zero)
+                    .find_mut_with(part, FixedBitSet::zero)
                     .set(id, true)
             }
         }
@@ -213,7 +212,7 @@ impl<T> Router<T> {
 
         for (part, s) in parts.iter().cloned().zip(self.segments.iter()) {
             let mut e = s.dynamic.clone();
-            if let Some(m) = s.static_map.get(part) {
+            if let Some(m) = s.static_map.find(part) {
                 e.union_with(m);
             }
             enable_mask.intersect_with(&e);

@@ -9,7 +9,7 @@ pub use self::error::RouterError;
 
 use self::endpoint::Endpoint;
 use crate::bitset::FixedBitSet;
-use std::collections::HashMap;
+use crate::strmap::StrMap;
 
 #[derive(Debug, Default)]
 pub struct Router<T> {
@@ -20,7 +20,7 @@ pub struct Router<T> {
 
 #[derive(Debug)]
 struct Segment {
-    static_map: HashMap<Box<str>, FixedBitSet<u128>>,
+    static_map: StrMap<FixedBitSet<u128>>,
     dynamic: FixedBitSet<u128>,
     wildcard: FixedBitSet<u128>,
 }

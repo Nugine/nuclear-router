@@ -7,6 +7,7 @@
 #![deny(unsafe_code)]
 
 mod bitset;
+mod strmap;
 
 mod router;
 pub use crate::router::{Captures, Router, RouterError};
