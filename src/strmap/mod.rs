@@ -37,6 +37,17 @@ impl<T> StrMap<T> {
     }
 
     fn find_index(&self, key: &[u8]) -> Result<usize, usize> {
+        use Ordering::*;
+
+        #[inline(always)]
+        fn cmp(lhs: &[u8], rhs: &[u8]) -> Ordering {
+            match lhs.len().cmp(&rhs.len()) {
+                Less => Less,
+                Greater => Greater,
+                Equal => lhs.cmp(rhs),
+            }
+        }
+
         let keys: &[Box<[u8]>] = &self.keys;
 
         let mut l: usize = 0;
@@ -45,7 +56,7 @@ impl<T> StrMap<T> {
         while l < r {
             let mid = l + (r - l) / 2;
             let m = unsafe { &**keys.get_unchecked(mid) };
-            match m.cmp(key) {
+            match cmp(m, key) {
                 Ordering::Less => l = mid + 1,
                 Ordering::Equal => return Ok(mid),
                 Ordering::Greater => r = mid,
@@ -55,7 +66,7 @@ impl<T> StrMap<T> {
             Some(t) => &**t,
             None => return Err(keys.len()),
         };
-        match target.cmp(key) {
+        match cmp(target, key) {
             Ordering::Less => Err(l + 1),
             Ordering::Equal => Ok(l),
             Ordering::Greater => Err(l),
