@@ -7,6 +7,7 @@ fn router_find(c: &mut Criterion) {
     group.bench_function("single-route", |b| {
         let mut router: Router<usize> = Router::new();
         router.insert("/hello/:name", 1);
+        assert_eq!(*router.find("/hello/world").unwrap().0, 1);
         b.iter_with_large_drop(|| router.find("/hello/world"))
     });
 
@@ -18,6 +19,22 @@ fn router_find(c: &mut Criterion) {
         router.insert("/posts", 4);
         router.insert("/comments", 5);
         router.insert("/comments/:id", 6);
+        assert_eq!(*router.find("/posts/100/comments/200").unwrap().0, 1);
+        b.iter_with_large_drop(|| router.find("/posts/100/comments/200"))
+    });
+
+    group.bench_function("small-routes-nested", |b| {
+        let mut router: Router<usize> = Router::new();
+        router
+            .insert("/posts", 4)
+            .nest("/posts/:post_id", |p| {
+                p.insert("/comments", 2)
+                    .insert("/comments/:id", 1)
+                    .insert("/", 3);
+            })
+            .insert("/comments", 5)
+            .insert("/comments/:id", 6);
+        assert_eq!(*router.find("/posts/100/comments/200").unwrap().0, 1);
         b.iter_with_large_drop(|| router.find("/posts/100/comments/200"))
     });
 
@@ -34,6 +51,7 @@ fn router_find(c: &mut Criterion) {
             router.insert(&pattern, i);
         }
         pattern.push_str("/64");
+        assert_eq!(*router.find(&pattern).unwrap().0, 64);
         b.iter_with_large_drop(|| router.find(&pattern))
     });
 }
