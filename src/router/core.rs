@@ -241,15 +241,23 @@ impl<T> Router<T> {
             enable_mask.intersect_with(&s.num_mask);
         }
 
-        let route = enable_mask
+        let base_ptr = self.routes.as_ptr();
+        let mut iter = enable_mask
             .iter_ones()
-            .map(|i| unsafe { self.routes.get_unchecked(i) })
-            .max_by(|lhs, rhs| {
-                if lhs.segment_num != rhs.segment_num {
-                    return lhs.segment_num.cmp(&rhs.segment_num);
+            .map(|i| unsafe { &*base_ptr.add(i) });
+
+        let route: &Route = {
+            let mut ans = iter.next()?;
+            for r in iter {
+                if r.segment_num == ans.segment_num && r.rank > ans.rank {
+                    ans = r;
                 }
-                lhs.rank.cmp(&rhs.rank)
-            })?;
+                if r.segment_num > ans.segment_num {
+                    ans = r;
+                }
+            }
+            ans
+        };
 
         for &(ref name, i) in route.captures.iter() {
             // safety: i < route.segment_num <= parts.len()
