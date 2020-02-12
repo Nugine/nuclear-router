@@ -1,11 +1,11 @@
-use nuclear_router::{hyper_service::Params, router_service};
+use nuclear_router::{router_service, OwnedCaptures};
 
 use std::convert::Infallible as Never;
 
 use hyper::service::make_service_fn;
 use hyper::{Body, Request, Response};
 
-async fn not_found(req: Request<Body>, _: Params) -> Result<Response<Body>, Never> {
+async fn not_found(req: Request<Body>, _: OwnedCaptures) -> Result<Response<Body>, Never> {
     dbg!((req.method(), req.uri().path()));
     let res = hyper::Response::builder()
         .status(404)
@@ -14,13 +14,13 @@ async fn not_found(req: Request<Body>, _: Params) -> Result<Response<Body>, Neve
     Ok(res)
 }
 
-async fn hello(_: Request<Body>, params: Params) -> Result<Response<Body>, Never> {
+async fn hello(_: Request<Body>, params: OwnedCaptures) -> Result<Response<Body>, Never> {
     let name = params.get("name").unwrap();
     dbg!(name);
     Ok(Response::new(Body::from(format!("hello, {}!", name))))
 }
 
-async fn file(_: Request<Body>, params: Params) -> Result<Response<Body>, Never> {
+async fn file(_: Request<Body>, params: OwnedCaptures) -> Result<Response<Body>, Never> {
     let path = params.get("filepath").unwrap();
     dbg!(path);
     Ok(Response::new(Body::from(format!("access file: {}", path))))

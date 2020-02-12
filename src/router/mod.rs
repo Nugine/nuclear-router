@@ -3,9 +3,11 @@ mod core;
 mod endpoint;
 mod error;
 mod imp;
+mod owned_captures;
 
 pub use self::captures::Captures;
 pub use self::error::RouterError;
+pub use self::owned_captures::OwnedCaptures;
 
 use self::endpoint::Endpoint;
 use crate::bitset::FixedBitSet;

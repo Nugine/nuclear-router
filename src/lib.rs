@@ -10,7 +10,7 @@ mod bitset;
 mod strmap;
 
 mod router;
-pub use crate::router::{Captures, Router, RouterError};
+pub use crate::router::{Captures, OwnedCaptures, Router, RouterError};
 
 macro_rules! cfg_feature{
     ($feature:literal; $($item:item)*)=>{
@@ -23,12 +23,12 @@ macro_rules! cfg_feature{
 
 cfg_feature! {
     "http-router";
-    pub mod http_router;
+    mod http_router;
     pub use crate::http_router::{HttpRouter, Method};
 }
 
 cfg_feature! {
     "hyper-service";
-    pub mod hyper_service;
-    pub use crate::hyper_service::{Params, RouterService, Handler, SharedRouterService};
+    mod hyper_service;
+    pub use crate::hyper_service::{RouterService, Handler, SharedRouterService};
 }

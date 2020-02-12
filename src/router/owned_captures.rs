@@ -4,12 +4,12 @@ use std::iter::{DoubleEndedIterator, ExactSizeIterator, FusedIterator};
 use std::str::FromStr;
 
 #[derive(Debug)]
-pub struct Params {
+pub struct OwnedCaptures {
     path: Option<Box<str>>,
     offset: Vec<(Box<str>, usize, usize)>, // (name, start, end)
 }
 
-impl Params {
+impl OwnedCaptures {
     pub fn empty() -> Self {
         Self {
             path: None,
@@ -17,7 +17,7 @@ impl Params {
         }
     }
 
-    pub fn new<'a>(caps: &Captures<'a>) -> Self {
+    pub fn new(caps: &Captures<'_>) -> Self {
         let mut offset: Vec<(Box<str>, usize, usize)> = Vec::with_capacity(caps.len());
         let base = caps.path().as_ptr() as usize;
         offset.extend(caps.iter().map(|&(name, value)| {
@@ -58,7 +58,7 @@ fn some_if<T>(cond: bool, f: impl FnOnce() -> T) -> Option<T> {
     }
 }
 
-impl IntoIterator for Params {
+impl IntoIterator for OwnedCaptures {
     type Item = (String, String);
     type IntoIter = IntoIter;
     fn into_iter(self) -> IntoIter {

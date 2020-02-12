@@ -37,13 +37,12 @@ impl<'a> Captures<'a> {
     }
 
     #[inline(always)]
-    pub(crate) fn buffer(&mut self) -> &mut SmallVec<[(&'a str, &'a str); 8]> {
+    pub(super) fn buffer(&mut self) -> &mut SmallVec<[(&'a str, &'a str); 8]> {
         &mut self.buf
     }
 
-    #[cfg(feature = "hyper-service")]
     #[inline(always)]
-    pub(crate) fn path(&self) -> &'a str {
+    pub(super) fn path(&self) -> &'a str {
         self.path
     }
 }

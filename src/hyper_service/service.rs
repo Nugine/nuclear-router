@@ -1,6 +1,6 @@
 use super::handler::{BoxHandler, Handler};
-use super::params::Params;
 use super::{BoxError, BoxFuture, Request, Response};
+use crate::router::OwnedCaptures;
 
 use crate::http_router::{HttpRouter, Method};
 
@@ -66,8 +66,8 @@ where
         let method = req.method();
         let path = req.uri().path();
         let (handler, params) = match self.router.find(method, path) {
-            Some((h, caps)) => (h, Params::new(&caps)),
-            None => (&self.default, Params::empty()),
+            Some((h, caps)) => (h, OwnedCaptures::new(&caps)),
+            None => (&self.default, OwnedCaptures::empty()),
         };
         Handler::call(handler, req, params)
     }
