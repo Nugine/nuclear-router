@@ -16,6 +16,8 @@ pub unsafe trait BitStorage: Sized {
     }
 }
 
+unsafe impl BitStorage for [u128; 4] {}
+unsafe impl BitStorage for [u128; 2] {}
 unsafe impl BitStorage for u128 {}
 unsafe impl BitStorage for u64 {}
 unsafe impl BitStorage for u32 {}

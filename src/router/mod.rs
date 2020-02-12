@@ -18,12 +18,14 @@ pub struct Router<T> {
     endpoints: Vec<Endpoint<T>>,
 }
 
+type Bits = u128;
+
 #[derive(Debug)]
 struct Segment {
-    static_map: StrMap<FixedBitSet<u128>>,
-    dynamic: FixedBitSet<u128>,
-    wildcard: FixedBitSet<u128>,
-    num_mask: FixedBitSet<u128>,
+    static_map: StrMap<FixedBitSet<Bits>>,
+    dynamic: FixedBitSet<Bits>,
+    wildcard: FixedBitSet<Bits>,
+    num_mask: FixedBitSet<Bits>,
 }
 
 #[derive(Debug)]

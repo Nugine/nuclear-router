@@ -1,9 +1,9 @@
 #![allow(unsafe_code)]
 
 use super::endpoint::Endpoint;
-use super::{Route, Router, Segment};
+use super::{Bits, Route, Router, Segment};
 
-use crate::bitset::FixedBitSet;
+use crate::bitset::{BitStorage, FixedBitSet};
 use crate::strmap::StrMap;
 
 use std::ptr::NonNull;
@@ -54,7 +54,7 @@ impl<T> Router<T> {
         // safety: pattern.len() >= 1
         let pattern = unsafe { pattern.get_unchecked(1..) };
 
-        if self.routes.len() >= 128 {
+        if self.routes.len() >= Bits::bit_size() {
             return Err("a single router can not hold more than 128 routes");
         }
 
@@ -108,7 +108,7 @@ impl<T> Router<T> {
             if self.routes.is_empty() {
                 return false;
             }
-            let mut enable_mask: FixedBitSet<u128> = FixedBitSet::one();
+            let mut enable_mask: FixedBitSet<Bits> = FixedBitSet::one();
             for (part, s) in parts.iter().cloned().zip(self.segments.iter()) {
                 let mut e = s.dynamic.clone();
                 if !part.starts_with(COLON) {
@@ -217,7 +217,7 @@ impl<T> Router<T> {
             return None;
         }
 
-        let mut enable_mask: FixedBitSet<u128> = FixedBitSet::one();
+        let mut enable_mask: FixedBitSet<Bits> = FixedBitSet::one();
 
         for (part, s) in parts.iter().cloned().zip(self.segments.iter()) {
             let mut e = s.dynamic.clone();
